@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Jellyfin System Configuration — Auto-generated reference.
+  Jellyfin manages its own config; this is a template for initial setup.
+  Actual config lives at: ~/.local/share/jellyfin/config/system.xml
+-->
+<ServerConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <IsStartupWizardCompleted>false</IsStartupWizardCompleted>
+
+  <!-- Network -->
+  <HttpServerPortNumber>8096</HttpServerPortNumber>
+  <HttpsPortNumber>8920</HttpsPortNumber>
+  <EnableHttps>false</EnableHttps>
+  <PublicPort>8096</PublicPort>
+  <PublicHttpsPort>8920</PublicHttpsPort>
+  <BaseUrl />
+  <EnableRemoteAccess>true</EnableRemoteAccess>
+
+  <!-- Paths -->
+  <CachePath />
+  <LogPath />
+  <MetadataPath />
+
+  <!-- Transcoding — Apple VideoToolbox for Metal hardware acceleration -->
+  <EnableMetrics>false</EnableMetrics>
+  <EnableNormalizedItemByNameIds>true</EnableNormalizedItemByNameIds>
+
+  <!-- Branding -->
+  <ServerName>Rainbow Media</ServerName>
+
+  <!-- Security -->
+  <IsRemoteIPFilterBlacklist>false</IsRemoteIPFilterBlacklist>
+  <QuickConnectAvailable>true</QuickConnectAvailable>
+</ServerConfiguration>

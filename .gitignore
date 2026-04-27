@@ -1,0 +1,55 @@
+# Environment and secrets
+.env
+*.env.local
+.env.*
+!.env.example
+
+# macOS
+.DS_Store
+._*
+
+# Generated configs (produced by generate-config.sh)
+infrastructure/caddy/Caddyfile
+infrastructure/cloudflared/config.yml
+infrastructure/cloudflared/credentials/
+infrastructure/postgres/init/00-create-databases.sql
+infrastructure/.env
+
+# Runtime data directories
+infrastructure/caddy/data/
+infrastructure/postgres/data/
+infrastructure/authentik/media/
+infrastructure/immich/upload/
+infrastructure/immich/model-cache/
+infrastructure/cryptpad/blob/
+infrastructure/cryptpad/block/
+infrastructure/cryptpad/data/
+infrastructure/seafile/data/
+infrastructure/minecraft/server/
+app-builder/apps/
+
+# Backups runtime
+backups/restic-env.sh
+
+# Installer build artifacts
+installer/components/
+installer/gui/.build/
+*.pkg
+
+# Node.js
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Cloudflare Workers
+cloudflare/.wrangler/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,19 @@
+# Rainbow Cloudflare Workers Configuration
+
+name = "rainbow-subdomain-manager"
+main = "src/subdomain-manager/index.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+ALLOWED_PARENT_DOMAIN = "rainbow.rocks"
+
+[[kv_namespaces]]
+binding = "SUBDOMAINS"
+id = ""  # Fill in after creating KV namespace: wrangler kv namespace create SUBDOMAINS
+
+# Health monitor worker (separate deployment)
+# Deploy with: wrangler deploy -c wrangler-health.toml
+
+[triggers]
+# Uncomment for health-monitor cron:
+# crons = ["*/5 * * * *"]

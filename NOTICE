@@ -1,0 +1,88 @@
+Rainbow
+Copyright 2026 Rainbow Contributors
+
+This product includes software developed by the Rainbow project
+(https://github.com/your-org/rainbow).
+
+=========================================================================
+
+Rainbow orchestrates the following open-source projects. These are not
+bundled with Rainbow — they are downloaded and run as separate processes
+(Docker containers or native binaries) by the end user. Their licenses
+apply to their respective codebases, not to Rainbow.
+
+  Immich — Self-hosted photo/video management
+  License: AGPL-3.0
+  https://github.com/immich-app/immich
+
+  Stalwart Mail Server — Email, calendar, contacts
+  License: AGPL-3.0 / Server-Side Enterprise License v1 (dual)
+  https://github.com/stalwartlabs/stalwart
+
+  CryptPad — Collaborative document editing
+  License: AGPL-3.0
+  https://github.com/cryptpad/cryptpad
+
+  Jellyfin — Media server
+  License: GPL-2.0
+  https://github.com/jellyfin/jellyfin
+
+  Seafile — File sync and share
+  License: AGPL-3.0 (server), Apache-2.0 (client)
+  https://github.com/haiwen/seafile
+
+  Authentik — Identity provider and SSO
+  License: MIT
+  https://github.com/goauthentik/authentik
+
+  Paper — Minecraft server
+  License: GPL-3.0
+  https://github.com/PaperMC/Paper
+
+  Caddy — Web server and reverse proxy
+  License: Apache-2.0
+  https://github.com/caddyserver/caddy
+
+  PostgreSQL — Relational database
+  License: PostgreSQL License (BSD-like)
+  https://www.postgresql.org/about/licence/
+
+  Valkey — In-memory data store (Redis fork)
+  License: BSD-3-Clause
+  https://github.com/valkey-io/valkey
+
+  Restic — Encrypted backup tool
+  License: BSD-2-Clause
+  https://github.com/restic/restic
+
+  cloudflared — Cloudflare Tunnel client
+  License: Apache-2.0
+  https://github.com/cloudflare/cloudflared
+
+=========================================================================
+
+Rainbow bundles (includes as npm dependencies) the following libraries:
+
+  Hono — Web framework for Cloudflare Workers
+  License: MIT
+  https://github.com/honojs/hono
+
+  Model Context Protocol TypeScript SDK
+  License: Apache-2.0
+  https://github.com/modelcontextprotocol/typescript-sdk
+
+  Anthropic SDK for TypeScript
+  License: MIT
+  https://github.com/anthropics/anthropic-sdk-node
+
+  React — UI library
+  License: MIT
+  https://github.com/facebook/react
+
+  Vite — Build tool
+  License: MIT
+  https://github.com/vitejs/vite
+
+  Express — HTTP server framework
+  License: MIT
+  https://github.com/expressjs/express

@@ -1,0 +1,11 @@
+-- Rainbow PostgreSQL initialization — Auto-generated
+-- Creates per-service databases within the shared PostgreSQL instance.
+
+CREATE DATABASE authentik;
+CREATE DATABASE immich;
+CREATE DATABASE seafile;
+
+-- Grant the rainbow user full access to all databases
+GRANT ALL PRIVILEGES ON DATABASE authentik TO {{POSTGRES_USER}};
+GRANT ALL PRIVILEGES ON DATABASE immich TO {{POSTGRES_USER}};
+GRANT ALL PRIVILEGES ON DATABASE seafile TO {{POSTGRES_USER}};

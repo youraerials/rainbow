@@ -1,0 +1,217 @@
+# Rainbow Docker Compose — Core Services
+# Generated service configs are populated by: rainbow config apply
+#
+# Usage:
+#   docker compose up -d              # Start all enabled services
+#   docker compose --profile optional up -d  # Include optional services
+#   docker compose logs -f caddy      # Follow logs for a service
+
+name: rainbow
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+  authentik_media:
+  authentik_templates:
+  immich_upload:
+  immich_model_cache:
+  cryptpad_blob:
+  cryptpad_block:
+  cryptpad_data:
+  cryptpad_datastore:
+  seafile_data:
+
+services:
+  # ─── Reverse Proxy ─────────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: rainbow-caddy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ─── Cloudflare Tunnel ─────────────────────────────────────────
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: rainbow-cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+    networks:
+      - frontend
+    depends_on:
+      caddy:
+        condition: service_healthy
+
+  # ─── Database ──────────────────────────────────────────────────
+  postgres:
+    image: postgres:17-alpine
+    container_name: rainbow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rainbow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: rainbow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rainbow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Cache (Valkey — BSD-3 licensed Redis fork) ─────────────────
+  redis:
+    image: valkey/valkey:8-alpine
+    container_name: rainbow-valkey
+    restart: unless-stopped
+    command: valkey-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Identity & Auth ───────────────────────────────────────────
+  authentik-server:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: rainbow-authentik
+    restart: unless-stopped
+    command: server
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?Set AUTHENTIK_SECRET_KEY in .env}
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_POSTGRESQL__HOST: postgres
+      AUTHENTIK_POSTGRESQL__USER: ${POSTGRES_USER:-rainbow}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_PASSWORD}
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: rainbow-authentik-worker
+    restart: unless-stopped
+    command: worker
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_POSTGRESQL__HOST: postgres
+      AUTHENTIK_POSTGRESQL__USER: ${POSTGRES_USER:-rainbow}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_PASSWORD}
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── Photos & Videos ───────────────────────────────────────────
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:release
+    container_name: rainbow-immich
+    restart: unless-stopped
+    environment:
+      DB_HOSTNAME: postgres
+      DB_USERNAME: ${POSTGRES_USER:-rainbow}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_DATABASE_NAME: immich
+      REDIS_HOSTNAME: redis
+    volumes:
+      - ${IMMICH_UPLOAD_PATH:-./immich/upload}:/usr/src/app/upload
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:release
+    container_name: rainbow-immich-ml
+    restart: unless-stopped
+    volumes:
+      - immich_model_cache:/cache
+    networks:
+      - backend
+
+  # ─── Collaborative Documents ───────────────────────────────────
+  cryptpad:
+    image: cryptpad/cryptpad:latest
+    container_name: rainbow-cryptpad
+    restart: unless-stopped
+    environment:
+      CPAD_MAIN_DOMAIN: "https://docs.${RAINBOW_DOMAIN:-localhost}"
+      CPAD_SANDBOX_DOMAIN: "https://docs-sandbox.${RAINBOW_DOMAIN:-localhost}"
+    volumes:
+      - cryptpad_blob:/cryptpad/blob
+      - cryptpad_block:/cryptpad/block
+      - cryptpad_data:/cryptpad/data
+      - cryptpad_datastore:/cryptpad/datastore
+    networks:
+      - frontend
+
+  # ─── File Sharing & Sync ───────────────────────────────────────
+  seafile:
+    image: seafileltd/seafile-mc:latest
+    container_name: rainbow-seafile
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_ROOT_PASSWD: ${POSTGRES_PASSWORD}
+      SEAFILE_ADMIN_EMAIL: ${SEAFILE_ADMIN_EMAIL:-admin@localhost}
+      SEAFILE_ADMIN_PASSWORD: ${SEAFILE_ADMIN_PASSWORD:?Set SEAFILE_ADMIN_PASSWORD in .env}
+      SEAFILE_SERVER_HOSTNAME: "files.${RAINBOW_DOMAIN:-localhost}"
+    volumes:
+      - ${SEAFILE_DATA_PATH:-./seafile/data}:/shared
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy

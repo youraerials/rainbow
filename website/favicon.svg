@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <style>
+    path { stroke: #1a1612; }
+    @media (prefers-color-scheme: dark) {
+      path { stroke: #f4ecd8; }
+    }
+  </style>
+  <g transform="translate(0, 20)">
+    <path d="M 10 50 A 40 40 0 0 1 90 50" stroke-width="6"/>
+    <path d="M 18 50 A 32 32 0 0 1 82 50" stroke-width="6"/>
+    <path d="M 26 50 A 24 24 0 0 1 74 50" stroke-width="6"/>
+    <path d="M 34 50 A 16 16 0 0 1 66 50" stroke-width="6"/>
+    <path d="M 42 50 A 8 8 0 0 1 58 50" stroke-width="6"/>
+  </g>
+</svg>

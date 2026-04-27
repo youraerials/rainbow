@@ -1,0 +1,337 @@
+#!/usr/bin/env bash
+#
+# rainbow — CLI for managing your self-hosted digital life.
+#
+# Usage:
+#   rainbow <command> [options]
+#
+# Commands:
+#   start [service]    Start all services or a specific service
+#   stop [service]     Stop all services or a specific service
+#   status             Show status of all services
+#   logs [service]     Follow logs for a service
+#   config apply       Generate configs from rainbow.yaml
+#   config edit        Open rainbow.yaml in your editor
+#   backup             Run a backup now
+#   restore            Restore from a backup
+#   update             Pull latest images and restart
+#   help               Show this help message
+
+set -euo pipefail
+
+RAINBOW_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CLI_DIR="$RAINBOW_ROOT/cli"
+INFRA_DIR="$RAINBOW_ROOT/infrastructure"
+CONFIG_FILE="$RAINBOW_ROOT/config/rainbow.yaml"
+
+# ─── Colors ──────────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# ─── Helpers ────────────────────────────────────────��────────────
+info()  { echo -e "${BLUE}[rainbow]${NC} $*"; }
+ok()    { echo -e "${GREEN}[rainbow]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[rainbow]${NC} $*"; }
+err()   { echo -e "${RED}[rainbow]${NC} $*" >&2; }
+
+# ─── Container runtime abstraction ──────────────────────────────
+# Uses Apple Container via container-compose by default.
+# Falls back to docker compose if container-compose is not available.
+compose() {
+    if command -v container-compose &>/dev/null; then
+        container-compose -f "$INFRA_DIR/docker-compose.yml" "$@"
+    elif command -v docker &>/dev/null; then
+        docker compose -f "$INFRA_DIR/docker-compose.yml" --env-file "$INFRA_DIR/.env" "$@"
+    else
+        err "No container runtime found."
+        err "Install Apple Container: brew install container container-compose"
+        exit 1
+    fi
+}
+
+# Check which runtime is active
+runtime_name() {
+    if command -v container-compose &>/dev/null; then
+        echo "Apple Container"
+    elif command -v docker &>/dev/null; then
+        echo "Docker"
+    else
+        echo "none"
+    fi
+}
+
+require_config() {
+    if [ ! -f "$INFRA_DIR/.env" ]; then
+        err "Configuration not generated yet."
+        err "Run 'rainbow config apply' first."
+        exit 1
+    fi
+}
+
+require_runtime() {
+    if ! command -v container &>/dev/null && ! command -v docker &>/dev/null; then
+        err "No container runtime installed."
+        err "Install with: brew install container container-compose"
+        exit 1
+    fi
+    # Ensure Apple Container system is running
+    if command -v container &>/dev/null; then
+        if ! container system status &>/dev/null 2>&1; then
+            info "Starting Apple Container system service..."
+            container system start 2>/dev/null || true
+        fi
+    fi
+}
+
+# ─── Commands ────────────────────────────────────────────────────
+cmd_start() {
+    local service="${1:-}"
+    require_config
+    require_runtime
+
+    if [ -n "$service" ]; then
+        case "$service" in
+            stalwart)
+                info "Starting Stalwart mail server..."
+                brew services start stalwart-mail 2>/dev/null || \
+                    launchctl load "$RAINBOW_ROOT/services/stalwart/launchd/art.stalw.mail.plist" 2>/dev/null || \
+                    err "Failed to start Stalwart. Is it installed?"
+                ;;
+            jellyfin)
+                info "Starting Jellyfin..."
+                brew services start jellyfin 2>/dev/null || \
+                    err "Failed to start Jellyfin. Is it installed?"
+                ;;
+            minecraft)
+                info "Starting Minecraft server..."
+                bash "$RAINBOW_ROOT/services/minecraft/start.sh"
+                ;;
+            *)
+                info "Starting $service..."
+                compose up -d "$service"
+                ;;
+        esac
+    else
+        info "Starting all Rainbow services ($(runtime_name))..."
+        compose up -d
+        # Start native services
+        if command -v stalwart-mail &>/dev/null; then
+            brew services start stalwart-mail 2>/dev/null || true
+        fi
+        if command -v jellyfin &>/dev/null; then
+            brew services start jellyfin 2>/dev/null || true
+        fi
+        ok "All services started."
+    fi
+}
+
+cmd_stop() {
+    local service="${1:-}"
+
+    if [ -n "$service" ]; then
+        case "$service" in
+            stalwart)
+                info "Stopping Stalwart mail server..."
+                brew services stop stalwart-mail 2>/dev/null || true
+                ;;
+            jellyfin)
+                info "Stopping Jellyfin..."
+                brew services stop jellyfin 2>/dev/null || true
+                ;;
+            minecraft)
+                info "Stopping Minecraft server..."
+                pkill -f "paper.*\.jar" 2>/dev/null || true
+                ;;
+            *)
+                info "Stopping $service..."
+                compose stop "$service"
+                ;;
+        esac
+    else
+        info "Stopping all Rainbow services..."
+        compose down
+        brew services stop stalwart-mail 2>/dev/null || true
+        brew services stop jellyfin 2>/dev/null || true
+        pkill -f "paper.*\.jar" 2>/dev/null || true
+        ok "All services stopped."
+    fi
+}
+
+cmd_status() {
+    echo -e "${BOLD}Rainbow Service Status${NC}"
+    echo -e "  Runtime: $(runtime_name)"
+    echo ""
+
+    # Container services
+    if [ -f "$INFRA_DIR/.env" ]; then
+        echo -e "${BOLD}Container Services:${NC}"
+        if command -v container &>/dev/null; then
+            container list 2>/dev/null | grep rainbow || \
+                warn "No rainbow containers running."
+        else
+            compose ps 2>/dev/null || \
+                warn "Container services not running or config not generated."
+        fi
+    else
+        warn "Config not generated. Run 'rainbow config apply'"
+    fi
+
+    echo ""
+    echo -e "${BOLD}Native Services:${NC}"
+
+    # Stalwart
+    if pgrep -x stalwart-mail &>/dev/null; then
+        echo -e "  Stalwart Mail:  ${GREEN}running${NC}"
+    else
+        echo -e "  Stalwart Mail:  ${RED}stopped${NC}"
+    fi
+
+    # Jellyfin
+    if pgrep -x jellyfin &>/dev/null; then
+        echo -e "  Jellyfin:       ${GREEN}running${NC}"
+    else
+        echo -e "  Jellyfin:       ${RED}stopped${NC}"
+    fi
+
+    # Minecraft
+    if pgrep -f "paper.*\.jar" &>/dev/null; then
+        echo -e "  Minecraft:      ${GREEN}running${NC}"
+    else
+        echo -e "  Minecraft:      ${RED}stopped${NC}"
+    fi
+
+    echo ""
+
+    # Show domain info
+    if [ -f "$CONFIG_FILE" ] && command -v yq &>/dev/null; then
+        local domain
+        domain=$(yq eval '.domain.primary' "$CONFIG_FILE" 2>/dev/null)
+        if [ -n "$domain" ] && [ "$domain" != "null" ]; then
+            echo -e "${BOLD}Access URLs:${NC}"
+            echo "  Dashboard:  https://app.$domain"
+            echo "  Photos:     https://photos.$domain"
+            echo "  Email:      https://mail.$domain"
+            echo "  Files:      https://files.$domain"
+            echo "  Docs:       https://docs.$domain"
+            echo "  Media:      https://media.$domain"
+            echo "  Auth:       https://auth.$domain"
+        fi
+    fi
+}
+
+cmd_logs() {
+    local service="${1:-}"
+    require_config
+
+    if [ -z "$service" ]; then
+        compose logs -f --tail=100
+    else
+        case "$service" in
+            stalwart)
+                if [ -f /opt/rainbow/stalwart/logs/stalwart.log ]; then
+                    tail -f /opt/rainbow/stalwart/logs/stalwart.log
+                else
+                    log show --predicate 'process == "stalwart-mail"' --last 1h --style compact
+                fi
+                ;;
+            jellyfin)
+                log show --predicate 'process == "jellyfin"' --last 1h --style compact
+                ;;
+            *)
+                compose logs -f --tail=100 "$service"
+                ;;
+        esac
+    fi
+}
+
+cmd_config() {
+    local subcmd="${1:-}"
+    case "$subcmd" in
+        apply)
+            info "Generating configuration from rainbow.yaml..."
+            bash "$RAINBOW_ROOT/scripts/generate-config.sh" "$CONFIG_FILE"
+            ok "Configuration applied."
+            ;;
+        edit)
+            "${EDITOR:-nano}" "$CONFIG_FILE"
+            ;;
+        *)
+            err "Usage: rainbow config <apply|edit>"
+            exit 1
+            ;;
+    esac
+}
+
+cmd_backup() {
+    info "Starting backup..."
+    bash "$RAINBOW_ROOT/backups/backup.sh"
+}
+
+cmd_update() {
+    info "Pulling latest images..."
+    compose pull
+    info "Restarting services..."
+    compose up -d
+    ok "Update complete."
+}
+
+cmd_help() {
+    cat <<EOF
+rainbow -- Manage your self-hosted digital life
+
+Usage:
+  rainbow <command> [options]
+
+Commands:
+  start [service]    Start all services or a specific one
+  stop [service]     Stop all services or a specific one
+  status             Show status of all services
+  logs [service]     Follow logs (all or specific service)
+  config apply       Generate configs from rainbow.yaml
+  config edit        Open rainbow.yaml in your editor
+  backup             Run a backup now
+  update             Pull latest images and restart
+  help               Show this help
+
+Container runtime: $(runtime_name)
+
+Services:
+  Container:  caddy, cloudflared, postgres, valkey, authentik-server,
+              immich-server, cryptpad, seafile
+  Native:     stalwart, jellyfin, minecraft
+
+Examples:
+  rainbow start                 # Start everything
+  rainbow stop immich-server    # Stop just Immich
+  rainbow logs caddy            # Follow Caddy logs
+  rainbow config apply          # Regenerate all configs
+EOF
+}
+
+# ─── Main ────────────────────────────────────────────────────────
+main() {
+    local command="${1:-help}"
+    shift || true
+
+    case "$command" in
+        start)   cmd_start "$@" ;;
+        stop)    cmd_stop "$@" ;;
+        status)  cmd_status ;;
+        logs)    cmd_logs "$@" ;;
+        config)  cmd_config "$@" ;;
+        backup)  cmd_backup ;;
+        update)  cmd_update ;;
+        help|--help|-h) cmd_help ;;
+        *)
+            err "Unknown command: $command"
+            cmd_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

@@ -1,0 +1,12 @@
+# Wrangler config for the Rainbow brand site (rainbow.rocks).
+# This is a Cloudflare Pages project, deployed via `wrangler pages deploy`.
+#
+# Pages projects don't strictly need a wrangler.toml, but having one
+# documents the intended configuration and supports `wrangler pages dev`.
+
+name = "rainbow-site"
+compatibility_date = "2024-12-01"
+pages_build_output_dir = "."
+
+# Custom domain is configured via the Cloudflare dashboard or API after
+# the first deploy. The deploy script (scripts/deploy.sh) handles this.
