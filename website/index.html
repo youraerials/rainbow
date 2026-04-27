@@ -76,7 +76,7 @@
 
       <h1 class="hero-headline">
         <span class="line line-1">Take</span>
-        <span class="line line-2"><em>back</em> your</span>
+        <span class="line line-2"><em>back</em> &nbsp;your</span>
         <span class="line line-3"
           >digital life<span class="period" aria-hidden="true">.</span></span
         >
@@ -379,6 +379,98 @@
             >
               <path d="M 0 0 L 10 5 L 0 10 z" fill="#1a1612" />
             </marker>
+            <style>
+              /* SVG-scoped styles — guaranteed to apply regardless of
+                 external stylesheet caching or specificity quirks. */
+              .arch-box {
+                fill: #f4ecd8;
+                stroke: #1a1612;
+                stroke-width: 1.25;
+              }
+              .arch-box-edge {
+                stroke-width: 1.5;
+              }
+              .arch-line {
+                stroke: #1a1612;
+                stroke-width: 1.1;
+                fill: none;
+              }
+              .arch-tickline {
+                stroke: #7a6e5c;
+                stroke-width: 1;
+                fill: none;
+              }
+              .arch-divider {
+                stroke: #b3a888;
+                stroke-width: 1;
+                fill: none;
+              }
+              .arch-rule {
+                stroke: #b3a888;
+                stroke-width: 0.75;
+                fill: none;
+              }
+              .arch-tier-label {
+                font-family: "Bricolage Grotesque", system-ui, sans-serif;
+                font-size: 11px;
+                font-weight: 500;
+                letter-spacing: 0.22em;
+                fill: #514738;
+              }
+              .arch-name {
+                font-family: "Fraunces", Georgia, serif;
+                font-style: italic;
+                font-size: 26px;
+                font-weight: 400;
+                fill: #1a1612;
+                letter-spacing: -0.01em;
+              }
+              .arch-name-sm {
+                font-size: 22px;
+              }
+              .arch-role {
+                font-family: "Bricolage Grotesque", system-ui, sans-serif;
+                font-size: 10.5px;
+                font-weight: 500;
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+                fill: #7a6e5c;
+              }
+              .arch-annot {
+                font-family: "Fraunces", Georgia, serif;
+                font-style: italic;
+                font-size: 13px;
+                fill: #514738;
+              }
+              .arch-fig-mark {
+                font-family: "Bricolage Grotesque", system-ui, sans-serif;
+                font-size: 10px;
+                font-weight: 500;
+                letter-spacing: 0.18em;
+                fill: #7a6e5c;
+              }
+              .arch-arrow-glyph {
+                font-family: "Bricolage Grotesque", system-ui, sans-serif;
+                font-style: normal;
+                font-weight: 300;
+                font-size: 0.85em;
+                fill: #7a6e5c;
+              }
+              /* Inverted card: Restic / S3 */
+              .arch-card-inverted .arch-box-backup {
+                fill: #1a1612;
+                stroke: #1a1612;
+              }
+              .arch-card-inverted .arch-name {
+                fill: #f4ecd8;
+              }
+              .arch-card-inverted .arch-role {
+                fill: #b3a888;
+              }
+              .arch-card-inverted .arch-arrow-glyph {
+                fill: #b3a888;
+              }
+            </style>
           </defs>
 
           <!-- ─────────── INTERNET ─────────── -->
@@ -589,41 +681,45 @@
             </text>
           </g>
 
-          <!-- "+ more" marginalia (Jellyfin, Paper run alongside, simplified) -->
-          <text
-            x="985"
-            y="479"
-            class="arch-annot"
-            text-anchor="end"
-            style="opacity: 0.7"
-          >
-            + Jellyfin, Paper
-          </text>
-          <text
-            x="985"
-            y="497"
-            class="arch-annot"
-            text-anchor="end"
-            style="opacity: 0.7"
-          >
-            running native
-          </text>
-
           <!-- service rises into shared trunk -->
-          <line class="arch-line" x1="100" y1="522" x2="100" y2="560" />
-          <line class="arch-line" x1="300" y1="522" x2="300" y2="560" />
-          <line class="arch-line" x1="500" y1="522" x2="500" y2="560" />
-          <line class="arch-line" x1="700" y1="522" x2="700" y2="560" />
-          <line class="arch-line" x1="900" y1="522" x2="900" y2="560" />
-          <line class="arch-line" x1="100" y1="560" x2="900" y2="560" />
+          <line class="arch-line" x1="100" y1="522" x2="100" y2="578" />
+          <line class="arch-line" x1="300" y1="522" x2="300" y2="578" />
+          <line class="arch-line" x1="500" y1="522" x2="500" y2="578" />
+          <line class="arch-line" x1="700" y1="522" x2="700" y2="578" />
+          <line class="arch-line" x1="900" y1="522" x2="900" y2="578" />
+          <line class="arch-line" x1="100" y1="578" x2="900" y2="578" />
           <line
             class="arch-line"
             x1="500"
-            y1="560"
+            y1="578"
             x2="500"
             y2="600"
             marker-end="url(#arrowhead)"
           />
+
+          <!-- "+ more" marginalia, centered between service row and trunk.
+               Rendered after the riser lines so the paper-colored mask
+               punches through them — a typeset-label-interrupting-a-line
+               convention from technical drawings. -->
+          <g>
+            <rect
+              x="298"
+              y="540"
+              width="404"
+              height="14"
+              fill="#f4ecd8"
+              stroke="none"
+            />
+            <text
+              x="500"
+              y="551"
+              class="arch-annot"
+              text-anchor="middle"
+              style="opacity: 0.65"
+            >
+              + Jellyfin and Paper run alongside, native to macOS.
+            </text>
+          </g>
 
           <!-- ─────────── SHARED INFRA (Postgres + Valkey) ─────────── -->
           <rect

@@ -795,100 +795,10 @@ a:hover { color: var(--ink-mid); }
   text-align: center;
 }
 
-/* ─── SVG primitives ─── */
-.arch-box {
-  fill: var(--paper);
-  stroke: var(--ink);
-  stroke-width: 1.25;
-}
-
-.arch-box-edge { stroke-width: 1.5; }
-.arch-box-svc  { fill: var(--paper); }
-.arch-box-data { fill: var(--paper); }
-
-.arch-line {
-  stroke: var(--ink);
-  stroke-width: 1.1;
-  fill: none;
-}
-
-.arch-tickline {
-  stroke: var(--ink-soft);
-  stroke-width: 1;
-}
-
-.arch-divider {
-  stroke: var(--ink-faint);
-  stroke-width: 1;
-}
-
-.arch-rule {
-  stroke: var(--ink-faint);
-  stroke-width: 0.75;
-}
-
-/* ─── SVG type ─── */
-.arch-tier-label {
-  font-family: var(--font-body);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.22em;
-  fill: var(--ink-mid);
-}
-
-.arch-name {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: 26px;
-  font-weight: 400;
-  fill: var(--ink);
-  font-variation-settings: "opsz" 60, "SOFT" 80, "WONK" 0;
-  letter-spacing: -0.01em;
-}
-
-.arch-name-sm { font-size: 22px; }
-
-.arch-role {
-  font-family: var(--font-body);
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  fill: var(--ink-soft);
-}
-
-.arch-annot {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: 13px;
-  fill: var(--ink-mid);
-  font-variation-settings: "opsz" 14, "SOFT" 100, "WONK" 1;
-}
-
-.arch-fig-mark {
-  font-family: var(--font-body);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.18em;
-  fill: var(--ink-soft);
-}
-
-.arch-arrow-glyph {
-  font-family: var(--font-body);
-  font-style: normal;
-  font-weight: 300;
-  font-size: 0.85em;
-  fill: var(--ink-soft);
-}
-
-/* ─── Inverted card (Restic / S3) ─── */
-.arch-card-inverted .arch-box-backup {
-  fill: var(--ink);
-  stroke: var(--ink);
-}
-.arch-card-inverted .arch-name { fill: var(--paper); }
-.arch-card-inverted .arch-role { fill: var(--ink-faint); }
-.arch-card-inverted .arch-arrow-glyph { fill: var(--ink-faint); }
+/* SVG-internal styling (boxes, lines, text fills, fonts) lives in an
+   inline <style> block inside the SVG itself. See website/index.html
+   under the architecture <figure>. Keeping it co-located with the
+   markup avoids the cache-skew risk we hit during development. */
 
 /* ------------------------------------------------------------
    Download
