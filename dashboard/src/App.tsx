@@ -42,7 +42,7 @@ export function App() {
           </div>
           <div style={styles.sidebarFooter}>
             <a
-              href="https://github.com/your-org/rainbow"
+              href="https://github.com/youraerials/rainbow"
               target="_blank"
               rel="noopener noreferrer"
               style={styles.footerLink}

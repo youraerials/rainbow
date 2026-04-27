@@ -14,7 +14,7 @@ This guide walks you through setting up Rainbow on a Mac Mini.
 ## Step 1: Clone and Install
 
 ```bash
-git clone https://github.com/your-org/rainbow.git
+git clone https://github.com/youraerials/rainbow.git
 cd rainbow
 make install
 ```

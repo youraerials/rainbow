@@ -1,8 +1,8 @@
 # Cloudflare Pages redirects
 # Format: source destination [status]
 
-/download   https://github.com/your-org/rainbow/releases/latest/download/Rainbow.pkg   302
-/docs       https://github.com/your-org/rainbow/blob/main/docs/getting-started.md      302
-/github     https://github.com/your-org/rainbow                                        302
-/license    https://github.com/your-org/rainbow/blob/main/LICENSE                      302
-/source     https://github.com/your-org/rainbow                                        302
+/download   https://github.com/youraerials/rainbow/releases/latest/download/Rainbow.pkg   302
+/docs       https://github.com/youraerials/rainbow/blob/main/docs/getting-started.md      302
+/github     https://github.com/youraerials/rainbow                                        302
+/license    https://github.com/youraerials/rainbow/blob/main/LICENSE                      302
+/source     https://github.com/youraerials/rainbow                                        302

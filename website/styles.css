@@ -759,37 +759,136 @@ a:hover { color: var(--ink-mid); }
   border-top: 1px solid var(--ink);
 }
 
-.arch-meta { margin-bottom: 2.5rem; }
+.arch-meta { margin-bottom: 2rem; }
 
-.arch-diagram {
-  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: clamp(0.62rem, 0.9vw + 0.1rem, 0.95rem);
-  line-height: 1.45;
-  color: var(--ink);
+.architecture .section-title { margin-bottom: clamp(2rem, 5vw, 3.5rem); }
+
+/* ─── Figure container ─── */
+.arch-figure {
+  margin: 0;
   background: var(--paper-soft);
   border: 1px solid var(--ink);
-  padding: clamp(1.5rem, 3vw, 2.5rem);
-  margin: 0;
-  overflow-x: auto;
-  white-space: pre;
-  text-align: left;
+  padding: clamp(1.5rem, 3.5vw, 3rem);
   position: relative;
+  overflow-x: auto;
 }
 
-.arch-diagram::before {
-  content: "system architecture";
-  position: absolute;
-  top: 0;
-  left: 0;
-  background: var(--ink);
-  color: var(--paper);
-  padding: 0.3em 0.8em;
-  font-family: var(--font-body);
-  font-size: 0.7rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  font-weight: 500;
+.arch-svg {
+  display: block;
+  width: 100%;
+  min-width: 760px;       /* keeps annotations readable; section scrolls horizontally below this */
+  height: auto;
+  max-width: 1000px;
+  margin: 0 auto;
 }
+
+.arch-caption {
+  display: block;
+  max-width: 56ch;
+  margin: 2rem auto 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--ink-mid);
+  font-variation-settings: "opsz" 24, "SOFT" 80, "WONK" 0;
+  text-align: center;
+}
+
+/* ─── SVG primitives ─── */
+.arch-box {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 1.25;
+}
+
+.arch-box-edge { stroke-width: 1.5; }
+.arch-box-svc  { fill: var(--paper); }
+.arch-box-data { fill: var(--paper); }
+
+.arch-line {
+  stroke: var(--ink);
+  stroke-width: 1.1;
+  fill: none;
+}
+
+.arch-tickline {
+  stroke: var(--ink-soft);
+  stroke-width: 1;
+}
+
+.arch-divider {
+  stroke: var(--ink-faint);
+  stroke-width: 1;
+}
+
+.arch-rule {
+  stroke: var(--ink-faint);
+  stroke-width: 0.75;
+}
+
+/* ─── SVG type ─── */
+.arch-tier-label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  fill: var(--ink-mid);
+}
+
+.arch-name {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 26px;
+  font-weight: 400;
+  fill: var(--ink);
+  font-variation-settings: "opsz" 60, "SOFT" 80, "WONK" 0;
+  letter-spacing: -0.01em;
+}
+
+.arch-name-sm { font-size: 22px; }
+
+.arch-role {
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  fill: var(--ink-soft);
+}
+
+.arch-annot {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 13px;
+  fill: var(--ink-mid);
+  font-variation-settings: "opsz" 14, "SOFT" 100, "WONK" 1;
+}
+
+.arch-fig-mark {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  fill: var(--ink-soft);
+}
+
+.arch-arrow-glyph {
+  font-family: var(--font-body);
+  font-style: normal;
+  font-weight: 300;
+  font-size: 0.85em;
+  fill: var(--ink-soft);
+}
+
+/* ─── Inverted card (Restic / S3) ─── */
+.arch-card-inverted .arch-box-backup {
+  fill: var(--ink);
+  stroke: var(--ink);
+}
+.arch-card-inverted .arch-name { fill: var(--paper); }
+.arch-card-inverted .arch-role { fill: var(--ink-faint); }
+.arch-card-inverted .arch-arrow-glyph { fill: var(--ink-faint); }
 
 /* ------------------------------------------------------------
    Download

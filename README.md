@@ -28,7 +28,7 @@
 
 ```bash
 # 1. Clone this repo
-git clone https://github.com/your-org/rainbow.git
+git clone https://github.com/youraerials/rainbow.git
 cd rainbow
 
 # 2. Install dependencies
