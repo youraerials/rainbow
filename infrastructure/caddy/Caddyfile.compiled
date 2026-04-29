@@ -11,6 +11,13 @@
 
 {
 	auto_https off
+	# Trust X-Forwarded-* headers from cloudflared (which is on a private network
+	# alongside this Caddy instance). Without this, Caddy overwrites the headers
+	# with its own values, and backend apps think the request is HTTP — which
+	# breaks Authentik's CSRF / cookie / origin checks.
+	servers {
+		trusted_proxies static private_ranges
+	}
 }
 
 # ─── Dashboard ───────────────────────────────────────────────────
@@ -23,12 +30,12 @@ http://test-app.rainbow.rocks {
 
 # ─── Auth (Authentik) ────────────────────────────────────────────
 http://test-auth.rainbow.rocks {
-	reverse_proxy 192.168.66.74:9000
+	reverse_proxy 192.168.66.84:9000
 }
 
 # ─── Photos (Immich) ─────────────────────────────────────────────
 http://test-photos.rainbow.rocks {
-	reverse_proxy 192.168.66.75:2283
+	reverse_proxy 192.168.66.85:2283
 }
 
 # ─── Email (Stalwart) ────────────────────────────────────────────
@@ -38,16 +45,16 @@ http://test-mail.rainbow.rocks {
 
 # ─── Files (Seafile) ─────────────────────────────────────────────
 http://test-files.rainbow.rocks {
-	reverse_proxy 192.168.66.77:80
+	reverse_proxy 192.168.66.87:80
 }
 
 # ─── Docs (CryptPad) ─────────────────────────────────────────────
 http://test-docs.rainbow.rocks {
-	reverse_proxy 192.168.66.76:3000
+	reverse_proxy 192.168.66.86:3000
 }
 
 http://test-docs-sandbox.rainbow.rocks {
-	reverse_proxy 192.168.66.76:3001
+	reverse_proxy 192.168.66.86:3001
 }
 
 # ─── Media (Jellyfin) ────────────────────────────────────────────

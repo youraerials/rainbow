@@ -11,6 +11,13 @@
 
 {
 	auto_https off
+	# Trust X-Forwarded-* headers from cloudflared (which is on a private network
+	# alongside this Caddy instance). Without this, Caddy overwrites the headers
+	# with its own values, and backend apps think the request is HTTP — which
+	# breaks Authentik's CSRF / cookie / origin checks.
+	servers {
+		trusted_proxies static private_ranges
+	}
 }
 
 # ─── Dashboard ───────────────────────────────────────────────────
