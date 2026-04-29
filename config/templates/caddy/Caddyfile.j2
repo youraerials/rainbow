@@ -4,56 +4,58 @@
 # All sites use http:// prefix because Cloudflare Tunnel terminates TLS at the
 # edge and sends plain HTTP to this origin. Caddy must listen on :80 (not :443),
 # which `http://` enforces; bare hostnames default to :443 even with auto_https off.
+#
+# Hostnames are level-1 subdomains: <prefix>-<service>.<zone>, e.g.
+# `aubrey-auth.rainbow.rocks`. Level-1 keeps everything inside Cloudflare's
+# free Universal SSL coverage.
 
 {
 	auto_https off
 }
 
 # ─── Dashboard ───────────────────────────────────────────────────
-http://app.{{RAINBOW_DOMAIN}} {
+http://{{HOST_PREFIX}}app.{{ZONE}} {
 	reverse_proxy localhost:5173
+	handle_errors {
+		respond "Rainbow is alive — dashboard not yet running. Try {{HOST_PREFIX}}auth.{{ZONE}} for Authentik." 200
+	}
 }
 
 # ─── Auth (Authentik) ────────────────────────────────────────────
-http://auth.{{RAINBOW_DOMAIN}} {
+http://{{HOST_PREFIX}}auth.{{ZONE}} {
 	reverse_proxy authentik-server:9000
 }
 
 # ─── Photos (Immich) ─────────────────────────────────────────────
-http://photos.{{RAINBOW_DOMAIN}} {
+http://{{HOST_PREFIX}}photos.{{ZONE}} {
 	reverse_proxy immich-server:2283
 }
 
 # ─── Email (Stalwart) ────────────────────────────────────────────
-http://mail.{{RAINBOW_DOMAIN}} {
+http://{{HOST_PREFIX}}mail.{{ZONE}} {
 	reverse_proxy localhost:8080
 }
 
 # ─── Files (Seafile) ─────────────────────────────────────────────
-http://files.{{RAINBOW_DOMAIN}} {
+http://{{HOST_PREFIX}}files.{{ZONE}} {
 	reverse_proxy seafile:80
 }
 
 # ─── Docs (CryptPad) ─────────────────────────────────────────────
-http://docs.{{RAINBOW_DOMAIN}} {
+http://{{HOST_PREFIX}}docs.{{ZONE}} {
 	reverse_proxy cryptpad:3000
 }
 
-http://docs-sandbox.{{RAINBOW_DOMAIN}} {
+http://{{HOST_PREFIX}}docs-sandbox.{{ZONE}} {
 	reverse_proxy cryptpad:3001
 }
 
 # ─── Media (Jellyfin) ────────────────────────────────────────────
-http://media.{{RAINBOW_DOMAIN}} {
+http://{{HOST_PREFIX}}media.{{ZONE}} {
 	reverse_proxy localhost:8096
 }
 
 # ─── MCP API Gateway ─────────────────────────────────────────────
-http://api.{{RAINBOW_DOMAIN}} {
+http://{{HOST_PREFIX}}api.{{ZONE}} {
 	reverse_proxy mcp-gateway:3001
-}
-
-# ─── Root domain — landing page until dashboard is up ────────────
-http://{{RAINBOW_DOMAIN}} {
-	respond "Rainbow is alive. The dashboard at app.{{RAINBOW_DOMAIN}} will appear here once it's running." 200
 }

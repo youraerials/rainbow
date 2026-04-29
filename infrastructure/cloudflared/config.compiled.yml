@@ -1,21 +1,32 @@
 # Cloudflare Tunnel Configuration — Auto-generated
 # Do not edit directly. Modify config/rainbow.yaml and run: rainbow config apply
+#
+# Each ingress rule maps a level-1 hostname to Caddy. The orchestrator rewrites
+# `caddy:80` to Caddy's container IP at runtime (Apple Container has no DNS
+# between containers).
 
 tunnel: 637940cb-2a5d-481b-9e84-4f121d26635f
 credentials-file: /etc/cloudflared/credentials.json
 
 ingress:
-  # All subdomains route to Caddy for internal routing
-  - hostname: "*.test.rainbow.rocks"
-    service: http://192.168.66.33:80
-  - hostname: "test.rainbow.rocks"
-    service: http://192.168.66.33:80
-
-  # SMTP for email (Stalwart)
-  - hostname: "mail.test.rainbow.rocks"
-    service: tcp://localhost:25
-    originRequest:
-      noTLSVerify: true
+  - hostname: "test-app.rainbow.rocks"
+    service: http://192.168.66.37:80
+  - hostname: "test-auth.rainbow.rocks"
+    service: http://192.168.66.37:80
+  - hostname: "test-photos.rainbow.rocks"
+    service: http://192.168.66.37:80
+  - hostname: "test-mail.rainbow.rocks"
+    service: http://192.168.66.37:80
+  - hostname: "test-files.rainbow.rocks"
+    service: http://192.168.66.37:80
+  - hostname: "test-docs.rainbow.rocks"
+    service: http://192.168.66.37:80
+  - hostname: "test-docs-sandbox.rainbow.rocks"
+    service: http://192.168.66.37:80
+  - hostname: "test-media.rainbow.rocks"
+    service: http://192.168.66.37:80
+  - hostname: "test-api.rainbow.rocks"
+    service: http://192.168.66.37:80
 
   # Catch-all (required by cloudflared)
   - service: http_status:404

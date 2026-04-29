@@ -4,56 +4,58 @@
 # All sites use http:// prefix because Cloudflare Tunnel terminates TLS at the
 # edge and sends plain HTTP to this origin. Caddy must listen on :80 (not :443),
 # which `http://` enforces; bare hostnames default to :443 even with auto_https off.
+#
+# Hostnames are level-1 subdomains: <prefix>-<service>.<zone>, e.g.
+# `aubrey-auth.rainbow.rocks`. Level-1 keeps everything inside Cloudflare's
+# free Universal SSL coverage.
 
 {
 	auto_https off
 }
 
 # ─── Dashboard ───────────────────────────────────────────────────
-http://app.test.rainbow.rocks {
+http://test-app.rainbow.rocks {
 	reverse_proxy localhost:5173
+	handle_errors {
+		respond "Rainbow is alive — dashboard not yet running. Try test-auth.rainbow.rocks for Authentik." 200
+	}
 }
 
 # ─── Auth (Authentik) ────────────────────────────────────────────
-http://auth.test.rainbow.rocks {
-	reverse_proxy 192.168.66.32:9000
+http://test-auth.rainbow.rocks {
+	reverse_proxy 192.168.66.36:9000
 }
 
 # ─── Photos (Immich) ─────────────────────────────────────────────
-http://photos.test.rainbow.rocks {
+http://test-photos.rainbow.rocks {
 	reverse_proxy immich-server:2283
 }
 
 # ─── Email (Stalwart) ────────────────────────────────────────────
-http://mail.test.rainbow.rocks {
+http://test-mail.rainbow.rocks {
 	reverse_proxy localhost:8080
 }
 
 # ─── Files (Seafile) ─────────────────────────────────────────────
-http://files.test.rainbow.rocks {
+http://test-files.rainbow.rocks {
 	reverse_proxy seafile:80
 }
 
 # ─── Docs (CryptPad) ─────────────────────────────────────────────
-http://docs.test.rainbow.rocks {
+http://test-docs.rainbow.rocks {
 	reverse_proxy cryptpad:3000
 }
 
-http://docs-sandbox.test.rainbow.rocks {
+http://test-docs-sandbox.rainbow.rocks {
 	reverse_proxy cryptpad:3001
 }
 
 # ─── Media (Jellyfin) ────────────────────────────────────────────
-http://media.test.rainbow.rocks {
+http://test-media.rainbow.rocks {
 	reverse_proxy localhost:8096
 }
 
 # ─── MCP API Gateway ─────────────────────────────────────────────
-http://api.test.rainbow.rocks {
+http://test-api.rainbow.rocks {
 	reverse_proxy mcp-gateway:3001
-}
-
-# ─── Root domain — landing page until dashboard is up ────────────
-http://test.rainbow.rocks {
-	respond "Rainbow is alive. The dashboard at app.test.rainbow.rocks will appear here once it's running." 200
 }

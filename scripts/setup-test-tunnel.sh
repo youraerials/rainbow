@@ -6,16 +6,17 @@
 #   1. cloudflared login (browser cert flow)
 #   2. Create a named tunnel (default: rainbow-test)
 #   3. Store the tunnel token in macOS Keychain
-#   4. Create DNS routes for each Rainbow subdomain (photos.<sub>, mail.<sub>, ...)
-#   5. Update config/rainbow.yaml with the test subdomain
+#   4. Create DNS routes for each level-1 service hostname
+#      (e.g. test-auth.rainbow.rocks, test-photos.rainbow.rocks)
+#   5. Update config/rainbow.yaml with prefix/zone
 #
 # Idempotent: re-running with the same tunnel name reuses the existing tunnel.
 #
 # Usage:
-#   ./scripts/setup-test-tunnel.sh                       # uses test.rainbow.rocks
-#   ./scripts/setup-test-tunnel.sh --subdomain dev       # uses dev.rainbow.rocks
+#   ./scripts/setup-test-tunnel.sh                       # uses prefix=test zone=rainbow.rocks
+#   ./scripts/setup-test-tunnel.sh --prefix aubrey       # uses prefix=aubrey zone=rainbow.rocks
 #   ./scripts/setup-test-tunnel.sh --tunnel my-tunnel    # custom tunnel name
-#   ./scripts/setup-test-tunnel.sh --domain example.com  # bring your own domain
+#   ./scripts/setup-test-tunnel.sh --domain example.com  # BYO domain (no prefix)
 
 set -euo pipefail
 
@@ -24,15 +25,15 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONFIG_FILE="$PROJECT_ROOT/config/rainbow.yaml"
 
 # ─── Defaults ────────────────────────────────────────────────────
-SUBDOMAIN="test"
-ROOT_DOMAIN="rainbow.rocks"
+PREFIX="test"
+ZONE="rainbow.rocks"
 TUNNEL_NAME="rainbow-test"
 CUSTOM_DOMAIN=""
 
 # ─── Parse args ──────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --subdomain)  SUBDOMAIN="$2"; shift 2 ;;
+        --prefix)     PREFIX="$2"; shift 2 ;;
         --tunnel)     TUNNEL_NAME="$2"; shift 2 ;;
         --domain)     CUSTOM_DOMAIN="$2"; shift 2 ;;
         --help|-h)
@@ -46,10 +47,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# BYO domain: empty prefix, zone is the user's full domain.
 if [ -n "$CUSTOM_DOMAIN" ]; then
-    PRIMARY_DOMAIN="$CUSTOM_DOMAIN"
+    PREFIX=""
+    ZONE="$CUSTOM_DOMAIN"
+fi
+
+if [ -n "$PREFIX" ]; then
+    HOST_PREFIX="${PREFIX}-"
+    PRIMARY_DOMAIN="${PREFIX}-app.${ZONE}"
 else
-    PRIMARY_DOMAIN="$SUBDOMAIN.$ROOT_DOMAIN"
+    HOST_PREFIX=""
+    PRIMARY_DOMAIN="app.${ZONE}"
 fi
 
 # ─── Colors ──────────────────────────────────────────────────────
@@ -123,15 +132,16 @@ ok "Tunnel token stored in Keychain (rainbow-cloudflare-tunnel-token)"
 
 # ─── Step 4: Create DNS routes for each service subdomain ────────
 SERVICE_HOSTS=(
-    "$PRIMARY_DOMAIN"
-    "photos.$PRIMARY_DOMAIN"
-    "mail.$PRIMARY_DOMAIN"
-    "docs.$PRIMARY_DOMAIN"
-    "files.$PRIMARY_DOMAIN"
-    "media.$PRIMARY_DOMAIN"
-    "auth.$PRIMARY_DOMAIN"
-    "mc.$PRIMARY_DOMAIN"
-    "app.$PRIMARY_DOMAIN"
+    "${HOST_PREFIX}app.${ZONE}"
+    "${HOST_PREFIX}auth.${ZONE}"
+    "${HOST_PREFIX}photos.${ZONE}"
+    "${HOST_PREFIX}mail.${ZONE}"
+    "${HOST_PREFIX}files.${ZONE}"
+    "${HOST_PREFIX}docs.${ZONE}"
+    "${HOST_PREFIX}docs-sandbox.${ZONE}"
+    "${HOST_PREFIX}media.${ZONE}"
+    "${HOST_PREFIX}api.${ZONE}"
+    "${HOST_PREFIX}mc.${ZONE}"
 )
 
 info "Creating DNS routes for ${#SERVICE_HOSTS[@]} hosts..."
@@ -145,16 +155,17 @@ for host in "${SERVICE_HOSTS[@]}"; do
 done
 
 # ─── Step 5: Update rainbow.yaml ─────────────────────────────────
-info "Updating $CONFIG_FILE with the test domain..."
-yq eval -i ".domain.primary = \"$PRIMARY_DOMAIN\"" "$CONFIG_FILE"
+info "Updating $CONFIG_FILE..."
+yq eval -i ".domain.prefix = \"$PREFIX\"" "$CONFIG_FILE"
+yq eval -i ".domain.zone = \"$ZONE\"" "$CONFIG_FILE"
 yq eval -i ".cloudflare.tunnel_id = \"$TUNNEL_ID\"" "$CONFIG_FILE"
-yq eval -i ".services.stalwart.domains = [\"$PRIMARY_DOMAIN\"]" "$CONFIG_FILE"
+yq eval -i ".services.stalwart.domains = [\"${HOST_PREFIX}mail.${ZONE}\"]" "$CONFIG_FILE"
 ok "rainbow.yaml updated"
 
 echo ""
 ok "Test tunnel ready."
 echo ""
-echo "  Domain:     $PRIMARY_DOMAIN"
+echo "  Hostnames:  ${HOST_PREFIX}app.${ZONE}, ${HOST_PREFIX}auth.${ZONE}, ${HOST_PREFIX}photos.${ZONE}, ..."
 echo "  Tunnel:     $TUNNEL_NAME ($TUNNEL_ID)"
 echo "  Token:      stored in Keychain"
 echo ""
@@ -163,4 +174,3 @@ echo "  1. Set the rest of your Keychain secrets (Postgres, Authentik, etc) — 
 echo "  2. Set cloudflare.zone_id in $CONFIG_FILE (find at dash.cloudflare.com)"
 echo "  3. make setup    # render configs"
 echo "  4. make start    # bring up services"
-echo "  5. make test     # see what works"

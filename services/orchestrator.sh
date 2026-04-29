@@ -288,10 +288,15 @@ start_minimum() {
     start_cloudflared "$caddy_ip" || return 1
     orch_ok "cloudflared started."
 
+    local prefix zone host_prefix
+    prefix=$(yq eval '.domain.prefix' "$CONFIG_FILE")
+    zone=$(yq eval '.domain.zone' "$CONFIG_FILE")
+    [ "$prefix" = "null" ] && prefix=""
+    [ -n "$prefix" ] && host_prefix="${prefix}-" || host_prefix=""
     echo ""
-    echo "  Routes through tunnel:"
-    echo "    curl https://$(yq eval '.domain.primary' "$CONFIG_FILE")           # caddy welcome page"
-    echo "    curl https://auth.$(yq eval '.domain.primary' "$CONFIG_FILE")      # authentik (after ~1 min boot)"
+    echo "  Routes through tunnel (HTTPS via Cloudflare's Universal SSL):"
+    echo "    curl https://${host_prefix}app.${zone}    # caddy welcome page"
+    echo "    curl https://${host_prefix}auth.${zone}   # authentik (after ~1 min boot)"
     echo ""
     echo "  Other service routes (photos, mail, files, ...) will 502 until those"
     echo "  containers exist."

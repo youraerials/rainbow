@@ -5,11 +5,15 @@
 rainbow:
   version: "0.1.0"
 # --- Domain ---
-# Choose a *.rainbow.rocks subdomain or bring your own domain.
+# Service hostnames are <prefix>-<service>.<zone> on a shared zone, e.g.
+# `aubrey-auth.rainbow.rocks`, `aubrey-photos.rainbow.rocks`. All are first-level
+# subdomains, which is what Cloudflare's free Universal SSL covers.
+#
+# BYO domain: leave `prefix` empty and set `zone` to your own domain. Hostnames
+# become `<service>.<zone>`, e.g. `auth.example.com`.
 domain:
-  primary: "test.rainbow.rocks"
-  # Subdomains are auto-generated: photos.mydomain.rainbow.rocks, mail.mydomain.rainbow.rocks, etc.
-  # Set to your own domain if using a custom domain (e.g., "example.com")
+  prefix: "test" # User prefix (e.g. "aubrey"). Empty for BYO domain.
+  zone: "rainbow.rocks" # Cloudflare zone (e.g. "example.com" for BYO).
 # --- Cloudflare ---
 # API token needs Zone.DNS:Edit and Cloudflare Tunnel permissions.
 # Store the actual token in macOS Keychain (the installer does this automatically).
@@ -52,7 +56,7 @@ services:
     data_path: "~/Library/Application Support/Rainbow/stalwart"
     # Mail domains served by this instance
     domains:
-      - test.rainbow.rocks
+      - test-mail.rainbow.rocks
   # Collaborative Documents
   cryptpad:
     enabled: true
