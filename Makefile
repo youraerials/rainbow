@@ -19,7 +19,7 @@ install: ## Install dependencies (Homebrew, Apple Container, native services)
 	@echo "Installing Rainbow dependencies..."
 	@command -v brew >/dev/null || (echo "Installing Homebrew..." && /bin/bash -c "$$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)")
 	brew install container container-compose yq jq restic cloudflared
-	container system start || true
+	container system start --enable-kernel-install || true
 	@echo "Dependencies installed. Run 'make setup' next."
 
 .PHONY: setup
@@ -55,17 +55,11 @@ test: ## Run full integration test suite
 test-quick: ## Run quick tests (skip email delivery, backups)
 	@bash scripts/test-all.sh --quick
 
-# ─── Development ─────────────────────────────────────────────────
-
-.PHONY: dev
-dev: ## Start services in development mode (with debug ports)
-	container-compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.dev.yml up -d
-
-.PHONY: dev-setup
-dev-setup: ## Set up development environment
-	@bash scripts/dev-setup.sh
-
 # ─── Configuration ───────────────────────────────────────────────
+
+.PHONY: setup-test-tunnel
+setup-test-tunnel: ## Create a Cloudflare Tunnel + DNS routes for testing (test.rainbow.rocks)
+	@bash scripts/setup-test-tunnel.sh
 
 .PHONY: config
 config: ## Regenerate all configs from rainbow.yaml

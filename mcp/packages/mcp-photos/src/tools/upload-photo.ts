@@ -84,7 +84,7 @@ export function registerUploadPhoto(server: McpServer): void {
           };
         }
 
-        const asset = await response.json();
+        const asset = (await response.json()) as any;
 
         // If album_id provided, add the asset to the album
         if (album_id && asset.id) {

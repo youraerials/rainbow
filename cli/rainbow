@@ -41,9 +41,20 @@ err()   { echo -e "${RED}[rainbow]${NC} $*" >&2; }
 # ─── Container runtime abstraction ──────────────────────────────
 # Uses Apple Container via container-compose by default.
 # Falls back to docker compose if container-compose is not available.
+# container-compose puts -f after the subcommand; docker compose puts it before.
 compose() {
     if command -v container-compose &>/dev/null; then
-        container-compose -f "$INFRA_DIR/docker-compose.yml" "$@"
+        local subcmd="$1"; shift
+        # container-compose doesn't auto-load .env or interpolate ${VAR} in the
+        # YAML from --env-file. Source the env file into our shell so YAML
+        # interpolation works, AND pass --env-file so values reach container env.
+        if [ -f "$INFRA_DIR/.env" ]; then
+            set -a
+            # shellcheck disable=SC1090
+            source "$INFRA_DIR/.env"
+            set +a
+        fi
+        container-compose "$subcmd" -f "$INFRA_DIR/docker-compose.yml" --env-file "$INFRA_DIR/.env" "$@"
     elif command -v docker &>/dev/null; then
         docker compose -f "$INFRA_DIR/docker-compose.yml" --env-file "$INFRA_DIR/.env" "$@"
     else

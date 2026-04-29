@@ -4,50 +4,41 @@
 
 rainbow:
   version: "0.1.0"
-
 # --- Domain ---
 # Choose a *.rainbow.rocks subdomain or bring your own domain.
 domain:
-  primary: "mydomain.rainbow.rocks"
+  primary: "test.rainbow.rocks"
   # Subdomains are auto-generated: photos.mydomain.rainbow.rocks, mail.mydomain.rainbow.rocks, etc.
   # Set to your own domain if using a custom domain (e.g., "example.com")
-
 # --- Cloudflare ---
 # API token needs Zone.DNS:Edit and Cloudflare Tunnel permissions.
 # Store the actual token in macOS Keychain (the installer does this automatically).
 cloudflare:
   zone_id: ""
-  tunnel_id: ""
+  tunnel_id: "637940cb-2a5d-481b-9e84-4f121d26635f"
   # api_token is read from macOS Keychain at runtime, not stored here
-
 # --- Admin ---
 admin:
-  name: ""
-  email: ""
-
+  name: "Aubrey"
+  email: "aubrey@test.rainbow.rocks"
 # --- Services ---
 # Toggle services on/off. Disabled services won't be started or configured.
 services:
   # Core infrastructure (always enabled)
   postgres:
     version: "17"
-
   valkey:
     version: "8"
-
   caddy:
     # Caddy listens on localhost only; Cloudflare Tunnel handles external access
     http_port: 80
     https_port: 443
-
   cloudflared:
     # Managed automatically via tunnel_id above
     metrics_port: 2000
-
   # Identity & Auth
   authentik:
     enabled: true
-
   # Photos & Videos
   immich:
     enabled: true
@@ -55,42 +46,36 @@ services:
     # Set to external drive path for large libraries:
     # upload_path: "/Volumes/ExternalSSD/rainbow/photos"
     enable_ml: true
-
   # Email, Calendar, Contacts
   stalwart:
     enabled: true
-    data_path: "/opt/rainbow/stalwart"
+    data_path: "~/Library/Application Support/Rainbow/stalwart"
     # Mail domains served by this instance
     domains:
-      - "mydomain.rainbow.rocks"
-
+      - test.rainbow.rocks
   # Collaborative Documents
   cryptpad:
     enabled: true
-
   # File Sharing & Sync
   seafile:
     enabled: true
     data_path: "./infrastructure/seafile/data"
     # Set to external drive for large file libraries:
     # data_path: "/Volumes/ExternalSSD/rainbow/seafile"
-
   # Media Server
   jellyfin:
     enabled: true
     media_paths:
       - "~/Movies"
       - "~/Music"
-    # Add external drives:
-    # - "/Volumes/ExternalSSD/media"
-
+      # Add external drives:
+      # - "/Volumes/ExternalSSD/media"
   # Minecraft Server
   minecraft:
     enabled: false
     memory: "4G"
     server_name: "Rainbow MC"
     max_players: 20
-
 # --- Backups ---
 backups:
   enabled: true
@@ -103,7 +88,6 @@ backups:
     keep_daily: 7
     keep_weekly: 4
     keep_monthly: 6
-
 # --- AI ---
 ai:
   enabled: true

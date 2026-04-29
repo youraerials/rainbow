@@ -41,7 +41,7 @@ export function registerPlaybackControl(server: McpServer): void {
           };
         }
 
-        const info = await response.json();
+        const info = (await response.json()) as any;
         const sources = (info.MediaSources ?? []) as Record<string, unknown>[];
 
         const result = {
@@ -140,7 +140,7 @@ export function registerPlaybackControl(server: McpServer): void {
           };
         }
 
-        const item = await response.json();
+        const item = (await response.json()) as any;
 
         return {
           content: [

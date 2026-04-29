@@ -64,7 +64,7 @@ export function registerLibrariesResource(server: McpServer): void {
                   }
                 );
                 if (countResponse.ok) {
-                  const countData = await countResponse.json();
+                  const countData = (await countResponse.json()) as any;
                   itemCount = countData.TotalRecordCount ?? 0;
                 }
               } catch {

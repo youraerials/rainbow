@@ -65,7 +65,7 @@ export function registerSearchPhotos(server: McpServer): void {
           };
         }
 
-        const data = await response.json();
+        const data = (await response.json()) as any;
         const assets = data.assets?.items ?? data.items ?? [];
 
         const results = assets.map((asset: Record<string, unknown>) => ({

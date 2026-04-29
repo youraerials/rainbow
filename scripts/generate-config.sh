@@ -38,6 +38,12 @@ cfg() {
     echo "$val"
 }
 
+# ─── Expand a leading ~ to $HOME (filesystem paths only) ─────────
+expand_path() {
+    local path="$1"
+    echo "${path/#\~/$HOME}"
+}
+
 # ─── Read a secret from macOS Keychain ───────────────────────────
 keychain_get() {
     local service="$1"
@@ -98,9 +104,9 @@ main() {
 
     # ── Service paths ────────────────────────────────────────────
     local stalwart_data immich_upload seafile_data
-    stalwart_data=$(cfg '.services.stalwart.data_path')
-    immich_upload=$(cfg '.services.immich.upload_path')
-    seafile_data=$(cfg '.services.seafile.data_path')
+    stalwart_data=$(expand_path "$(cfg '.services.stalwart.data_path')")
+    immich_upload=$(expand_path "$(cfg '.services.immich.upload_path')")
+    seafile_data=$(expand_path "$(cfg '.services.seafile.data_path')")
 
     # ── Secrets from Keychain ────────────────────────────────────
     local pg_password authentik_secret authentik_bootstrap_pass

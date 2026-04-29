@@ -36,9 +36,9 @@ services:
     image: caddy:2-alpine
     container_name: rainbow-caddy
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:80:80"
-      - "127.0.0.1:443:443"
+    # No host port bindings — Cloudflare Tunnel is the only ingress and reaches
+    # caddy via the container network. Apple Container also forbids binding
+    # privileged host ports (<1024) without root, which we never want to require.
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -58,12 +58,11 @@ services:
     restart: unless-stopped
     command: tunnel run
     environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     networks:
       - frontend
     depends_on:
-      caddy:
-        condition: service_healthy
+      - caddy
 
   # ─── Database ──────────────────────────────────────────────────
   postgres:
@@ -121,10 +120,8 @@ services:
       - frontend
       - backend
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
 
   authentik-worker:
     image: ghcr.io/goauthentik/server:latest
@@ -144,10 +141,8 @@ services:
     networks:
       - backend
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
 
   # ─── Photos & Videos ───────────────────────────────────────────
   immich-server:
@@ -166,10 +161,8 @@ services:
       - frontend
       - backend
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
 
   immich-machine-learning:
     image: ghcr.io/immich-app/immich-machine-learning:release
@@ -213,5 +206,4 @@ services:
       - frontend
       - backend
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres

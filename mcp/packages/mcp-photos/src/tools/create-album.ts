@@ -54,7 +54,7 @@ export function registerCreateAlbum(server: McpServer): void {
           };
         }
 
-        const album = await response.json();
+        const album = (await response.json()) as any;
 
         return {
           content: [

@@ -16,13 +16,19 @@
 | AI App Builder | Claude API | `app.yourdomain.rainbow.rocks` |
 | Encrypted Backups | [Restic](https://restic.net) | Automatic, cloud-stored |
 
+## Status
+
+**Rainbow is in early development.** The scaffolding is complete across all eight phases, but most services have not been verified end-to-end. Expect breakage, especially around the AI app builder, MCP gateway, and the Authentik SSO integration.
+
+There is no separate "dev mode." Rainbow is tested through a real Cloudflare Tunnel against a real domain — that's the only way to know which services actually work. Use the test-tunnel flow below for development.
+
 ## Quick Start
 
 ### Prerequisites
 
-- Mac Mini (M1 or later, 16GB+ RAM recommended)
+- Mac Mini or Mac laptop (M1 or later, 16GB+ RAM recommended)
 - macOS 26 (Tahoe) or later
-- A Cloudflare account (free tier works)
+- A Cloudflare account with a zone you control (e.g. `rainbow.rocks` or your own domain)
 
 ### Install
 
@@ -31,28 +37,31 @@
 git clone https://github.com/youraerials/rainbow.git
 cd rainbow
 
-# 2. Install dependencies
+# 2. Install dependencies (Apple Container, container-compose, cloudflared, restic, yq, jq)
 make install
 
-# 3. Edit your configuration
-cp config/rainbow.yaml config/rainbow.local.yaml
-# Edit config/rainbow.yaml with your domain, email, etc.
+# 3. Set up a Cloudflare Tunnel for testing
+#    Defaults to test.rainbow.rocks. Use --domain to bring your own domain.
+make setup-test-tunnel
 
-# 4. Store secrets in macOS Keychain
-security add-generic-password -s "rainbow-postgres-password" -a rainbow -w "your-secure-password"
-security add-generic-password -s "rainbow-authentik-secret" -a rainbow -w "$(openssl rand -hex 32)"
-security add-generic-password -s "rainbow-cloudflare-tunnel-token" -a rainbow -w "your-tunnel-token"
-# ... (the setup wizard automates this)
+# 4. Store the remaining secrets in macOS Keychain
+security add-generic-password -s "rainbow-postgres-password" -a rainbow -w "$(openssl rand -hex 24)"
+security add-generic-password -s "rainbow-authentik-secret"  -a rainbow -w "$(openssl rand -hex 32)"
+security add-generic-password -s "rainbow-cloudflare-api-token" -a rainbow -w "your-cf-api-token"
 
-# 5. Generate configs and start
+# 5. Set cloudflare.zone_id in config/rainbow.yaml
+#    (find it on the zone overview page in the Cloudflare dashboard)
+
+# 6. Generate per-service configs and start
 make setup
 make start
 
-# 6. Check status
+# 7. Check status and run the integration tests to see what works
 make status
+make test
 ```
 
-### Using the Setup Wizard (Recommended)
+### Using the Setup Wizard (Recommended for end users)
 
 For a guided setup experience, run the installer package which launches a SwiftUI setup wizard. It handles domain registration, Cloudflare tunnel creation, secret storage, and service configuration automatically.
 
@@ -70,13 +79,11 @@ Cloudflare Edge (DNS + TLS)
 Caddy (reverse proxy on localhost)
   |
   +---> Immich (photos)
-  +---> Stalwart (email/calendar)
+  +---> Stalwart (email/calendar) — native
   +---> CryptPad (docs)
   +---> Seafile (files)
-  +---> Jellyfin (media)
+  +---> Jellyfin (media) — native
   +---> Authentik (auth)
-  +---> MCP Gateway (AI coordination)
-  +---> Dashboard (web UI)
 ```
 
 **Zero open ports.** Cloudflare Tunnel creates an outbound-only encrypted connection from your Mac Mini to Cloudflare's edge network. No router port forwarding needed.

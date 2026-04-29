@@ -1,0 +1,21 @@
+# Cloudflare Tunnel Configuration — Auto-generated
+# Do not edit directly. Modify config/rainbow.yaml and run: rainbow config apply
+
+tunnel: 637940cb-2a5d-481b-9e84-4f121d26635f
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  # All subdomains route to Caddy for internal routing
+  - hostname: "*.test.rainbow.rocks"
+    service: http://192.168.66.19:80
+  - hostname: "test.rainbow.rocks"
+    service: http://192.168.66.19:80
+
+  # SMTP for email (Stalwart)
+  - hostname: "mail.test.rainbow.rocks"
+    service: tcp://localhost:25
+    originRequest:
+      noTLSVerify: true
+
+  # Catch-all (required by cloudflared)
+  - service: http_status:404

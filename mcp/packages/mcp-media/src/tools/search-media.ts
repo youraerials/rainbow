@@ -60,7 +60,7 @@ export function registerSearchMedia(server: McpServer): void {
           };
         }
 
-        const data = await response.json();
+        const data = (await response.json()) as any;
         const items = (data.Items ?? []) as Record<string, unknown>[];
 
         const results = items.map((item) => ({
