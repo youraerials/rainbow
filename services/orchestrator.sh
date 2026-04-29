@@ -44,12 +44,11 @@ container_ip() {
         | head -n1
 }
 
-# Check whether a container exists (any state).
+# Check whether a container exists (any state). `container inspect` always
+# exits 0 — it returns `[]` for unknown names and a populated JSON array for
+# known ones, so we test the body for an `id` field.
 container_exists() {
-    local name="$1"
-    container ls -a --format json 2>/dev/null \
-        | yq -p=json '.[].configuration.id // ""' 2>/dev/null \
-        | grep -qx "$name"
+    container inspect "$1" 2>/dev/null | grep -q '"id"'
 }
 
 # Ensure a container network exists.
@@ -61,15 +60,24 @@ ensure_network() {
     fi
 }
 
-# Stop+remove a container if it exists, then run a fresh one.
+# Stop+remove a container by name, then run a fresh one. The unconditional
+# delete sidesteps a race where `container ls --format json` sometimes doesn't
+# reflect a stopped container that still holds its name.
 # Usage: replace_container <name> <container-run-args...>
 replace_container() {
     local name="$1"; shift
-    if container_exists "$name"; then
-        container stop "$name" >/dev/null 2>&1 || true
-        container delete "$name" >/dev/null 2>&1 || true
-    fi
+    container delete --force "$name" >/dev/null 2>&1 || true
     container run -d --name "$name" "$@"
+}
+
+# Ensure a named volume exists. Apple Container's named volumes are owned by
+# the in-VM root user, which lets services (postgres, valkey) chown them on
+# first run — bind mounts to host paths can't be chowned and break those images.
+ensure_volume() {
+    local name="$1"
+    if ! container volume list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "$name"; then
+        container volume create "$name" >/dev/null
+    fi
 }
 
 # Wait until a container reports an IP (bounded poll).
@@ -89,14 +97,121 @@ wait_for_ip() {
 # Each start_<service>() launches a single container. They're factored so the
 # top-level start_minimum() and (later) start_full() can pick which to bring up.
 
+# Source generated infrastructure/.env into the current shell so environment
+# values (passwords, etc.) populated by generate-config.sh from the Keychain
+# are available for --env arguments below.
+load_env() {
+    if [ -f "$INFRA_DIR/.env" ]; then
+        set -a
+        # shellcheck disable=SC1090
+        source "$INFRA_DIR/.env"
+        set +a
+    fi
+}
+
+start_postgres() {
+    orch_info "Starting Postgres..."
+    : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD missing — run make setup}"
+    ensure_volume rainbow-postgres-data
+    # PGDATA points at a subdir because Apple Container's volumes have a
+    # lost+found entry from their ext4 backing, and initdb refuses to use a
+    # non-empty mount root.
+    replace_container rainbow-postgres \
+        --network backend \
+        --env "POSTGRES_USER=${POSTGRES_USER:-rainbow}" \
+        --env "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" \
+        --env "POSTGRES_DB=rainbow" \
+        --env "PGDATA=/var/lib/postgresql/data/pgdata" \
+        --mount "type=volume,source=rainbow-postgres-data,target=/var/lib/postgresql/data" \
+        --volume "$INFRA_DIR/postgres/init:/docker-entrypoint-initdb.d:ro" \
+        docker.io/library/postgres:17-alpine \
+        >/dev/null
+}
+
+start_valkey() {
+    orch_info "Starting Valkey..."
+    ensure_volume rainbow-valkey-data
+    replace_container rainbow-valkey \
+        --network backend \
+        --mount "type=volume,source=rainbow-valkey-data,target=/data" \
+        docker.io/valkey/valkey:8-alpine \
+        valkey-server --save 60 1 --loglevel warning \
+        >/dev/null
+}
+
+start_authentik_server() {
+    local postgres_ip="$1" valkey_ip="$2"
+    orch_info "Starting Authentik server..."
+    ensure_volume rainbow-authentik-media
+    ensure_volume rainbow-authentik-templates
+    compile_authentik_env "$postgres_ip" "$valkey_ip"
+    replace_container rainbow-authentik-server \
+        --network frontend \
+        --network backend \
+        --env-file "$INFRA_DIR/authentik/.env.compiled" \
+        --mount "type=volume,source=rainbow-authentik-media,target=/media" \
+        --mount "type=volume,source=rainbow-authentik-templates,target=/templates" \
+        ghcr.io/goauthentik/server:latest \
+        server \
+        >/dev/null
+}
+
+start_authentik_worker() {
+    orch_info "Starting Authentik worker..."
+    # compile_authentik_env was already called by start_authentik_server.
+    # Worker does NOT mount the media/templates volumes — Apple Container can't
+    # share a named volume between two running containers (VZ storage device
+    # error). Worker functions without them; if a feature breaks (e.g. custom
+    # email templates), revisit with bind-mounts to a shared host directory.
+    replace_container rainbow-authentik-worker \
+        --network backend \
+        --env-file "$INFRA_DIR/authentik/.env.compiled" \
+        ghcr.io/goauthentik/server:latest \
+        worker \
+        >/dev/null
+}
+
+# Render authentik/.env.compiled with postgres/valkey IPs substituted for the
+# `postgres`/`redis` hostnames (Apple Container has no DNS-by-name).
+compile_authentik_env() {
+    local postgres_ip="$1" valkey_ip="$2"
+    local src="$INFRA_DIR/authentik/.env"
+    local dest="$INFRA_DIR/authentik/.env.compiled"
+    sed \
+        -e "s|^AUTHENTIK_POSTGRESQL__HOST=.*|AUTHENTIK_POSTGRESQL__HOST=${postgres_ip}|" \
+        -e "s|^AUTHENTIK_REDIS__HOST=.*|AUTHENTIK_REDIS__HOST=${valkey_ip}|" \
+        "$src" > "$dest"
+}
+
+# Render infrastructure/caddy/Caddyfile.compiled with name:port references
+# substituted for IP:port. Args: name=ip pairs for services we know are up.
+# Services we don't pass stay name-based and will 502 at request time — which
+# is the dev experience we want until they're implemented.
+compile_caddyfile() {
+    local src="$INFRA_DIR/caddy/Caddyfile"
+    local dest="$INFRA_DIR/caddy/Caddyfile.compiled"
+    cp "$src" "$dest"
+    while [ $# -gt 0 ]; do
+        local pair="$1"; shift
+        local name="${pair%%=*}"
+        local ip="${pair#*=}"
+        sed -i '' -e "s|${name}:|${ip}:|g" "$dest"
+    done
+}
+
 start_caddy() {
     orch_info "Starting Caddy..."
-    mkdir -p "$APPDATA/caddy/data" "$APPDATA/caddy/config"
+    ensure_volume rainbow-caddy-data
+    ensure_volume rainbow-caddy-config
+    # Use the IP-substituted Caddyfile rendered by compile_caddyfile().
+    # Falls back to the un-substituted Caddyfile if compile hasn't run yet.
+    local caddyfile="$INFRA_DIR/caddy/Caddyfile.compiled"
+    [ -f "$caddyfile" ] || caddyfile="$INFRA_DIR/caddy/Caddyfile"
     replace_container rainbow-caddy \
         --network frontend \
-        --volume "$INFRA_DIR/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
-        --volume "$APPDATA/caddy/data:/data" \
-        --volume "$APPDATA/caddy/config:/config" \
+        --volume "$caddyfile:/etc/caddy/Caddyfile:ro" \
+        --mount "type=volume,source=rainbow-caddy-data,target=/data" \
+        --mount "type=volume,source=rainbow-caddy-config,target=/config" \
         docker.io/library/caddy:2-alpine \
         >/dev/null
 }
@@ -140,38 +255,63 @@ credentials-file: /etc/cloudflared/credentials.json
 
 # ─── Top-level entrypoints ───────────────────────────────────────
 
-# Bring up the smallest possible stack: Caddy + cloudflared. Used to verify the
-# tunnel→reverse-proxy plumbing without depending on any backend services.
+# Bring up the core services: postgres, valkey, caddy, cloudflared.
+# These are the data plane (postgres/valkey) and ingress (caddy/cloudflared)
+# layers that everything else builds on. App services (authentik, immich, ...)
+# come on top in later phases.
 start_minimum() {
+    load_env
     ensure_network frontend
     ensure_network backend
 
+    start_postgres
+    local postgres_ip
+    postgres_ip=$(wait_for_ip rainbow-postgres) || { orch_err "postgres has no IP"; return 1; }
+
+    start_valkey
+    local valkey_ip
+    valkey_ip=$(wait_for_ip rainbow-valkey) || { orch_err "valkey has no IP"; return 1; }
+
+    start_authentik_server "$postgres_ip" "$valkey_ip"
+    start_authentik_worker
+    local authentik_ip
+    authentik_ip=$(wait_for_ip rainbow-authentik-server) \
+        || { orch_err "authentik-server has no IP"; return 1; }
+    orch_ok "Authentik IP: $authentik_ip (will take a minute to finish DB migrations)"
+
+    compile_caddyfile "authentik-server=$authentik_ip"
     start_caddy
     local caddy_ip
-    if ! caddy_ip=$(wait_for_ip rainbow-caddy); then
-        orch_err "Caddy started but never reported an IP."
-        return 1
-    fi
+    caddy_ip=$(wait_for_ip rainbow-caddy) || { orch_err "caddy has no IP"; return 1; }
     orch_ok "Caddy IP: $caddy_ip"
 
     start_cloudflared "$caddy_ip" || return 1
     orch_ok "cloudflared started."
 
     echo ""
-    echo "  Test from another machine:"
-    echo "    curl -v https://$(yq eval '.domain.primary' "$CONFIG_FILE")"
+    echo "  Routes through tunnel:"
+    echo "    curl https://$(yq eval '.domain.primary' "$CONFIG_FILE")           # caddy welcome page"
+    echo "    curl https://auth.$(yq eval '.domain.primary' "$CONFIG_FILE")      # authentik (after ~1 min boot)"
     echo ""
-    echo "  Expected: a response from Caddy through Cloudflare Tunnel."
-    echo "  Backends aren't running yet, so service routes may return 502 — that's"
-    echo "  fine; what matters is that you reach Caddy at all."
+    echo "  Other service routes (photos, mail, files, ...) will 502 until those"
+    echo "  containers exist."
 }
 
+RAINBOW_CONTAINERS=(
+    rainbow-cloudflared
+    rainbow-caddy
+    rainbow-authentik-server
+    rainbow-authentik-worker
+    rainbow-postgres
+    rainbow-valkey
+    rainbow-immich
+    rainbow-immich-ml
+    rainbow-cryptpad
+    rainbow-seafile
+)
+
 stop_all() {
-    for name in rainbow-cloudflared rainbow-caddy \
-                rainbow-postgres rainbow-valkey \
-                rainbow-authentik-server rainbow-authentik-worker \
-                rainbow-immich rainbow-immich-ml \
-                rainbow-cryptpad rainbow-seafile; do
+    for name in "${RAINBOW_CONTAINERS[@]}"; do
         if container_exists "$name"; then
             orch_info "Stopping $name..."
             container stop "$name" >/dev/null 2>&1 || true
@@ -182,13 +322,9 @@ stop_all() {
 
 remove_all() {
     stop_all
-    for name in rainbow-cloudflared rainbow-caddy \
-                rainbow-postgres rainbow-valkey \
-                rainbow-authentik-server rainbow-authentik-worker \
-                rainbow-immich rainbow-immich-ml \
-                rainbow-cryptpad rainbow-seafile; do
+    for name in "${RAINBOW_CONTAINERS[@]}"; do
         if container_exists "$name"; then
-            container delete "$name" >/dev/null 2>&1 || true
+            container delete --force "$name" >/dev/null 2>&1 || true
         fi
     done
     orch_ok "All container services removed."

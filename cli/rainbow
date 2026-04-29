@@ -39,34 +39,26 @@ warn()  { echo -e "${YELLOW}[rainbow]${NC} $*"; }
 err()   { echo -e "${RED}[rainbow]${NC} $*" >&2; }
 
 # ─── Container runtime abstraction ──────────────────────────────
-# Uses Apple Container via container-compose by default.
-# Falls back to docker compose if container-compose is not available.
-# container-compose puts -f after the subcommand; docker compose puts it before.
+# Apple Container is the primary runtime. Orchestration uses our own
+# services/orchestrator.sh because container-compose 0.11 is too feature-incomplete
+# (no DNS-by-name, no env interpolation, no condition-based depends_on).
+# Docker is supported as a fallback for users who prefer the existing ecosystem.
+
+ORCHESTRATOR="$RAINBOW_ROOT/services/orchestrator.sh"
+
+# True if we should use Apple Container + orchestrator.sh.
+use_native() {
+    command -v container &>/dev/null
+}
+
+# Fallback compose helper for the Docker path.
 compose() {
-    if command -v container-compose &>/dev/null; then
-        local subcmd="$1"; shift
-        # container-compose doesn't auto-load .env or interpolate ${VAR} in the
-        # YAML from --env-file. Source the env file into our shell so YAML
-        # interpolation works, AND pass --env-file so values reach container env.
-        if [ -f "$INFRA_DIR/.env" ]; then
-            set -a
-            # shellcheck disable=SC1090
-            source "$INFRA_DIR/.env"
-            set +a
-        fi
-        container-compose "$subcmd" -f "$INFRA_DIR/docker-compose.yml" --env-file "$INFRA_DIR/.env" "$@"
-    elif command -v docker &>/dev/null; then
-        docker compose -f "$INFRA_DIR/docker-compose.yml" --env-file "$INFRA_DIR/.env" "$@"
-    else
-        err "No container runtime found."
-        err "Install Apple Container: brew install container container-compose"
-        exit 1
-    fi
+    docker compose -f "$INFRA_DIR/docker-compose.yml" --env-file "$INFRA_DIR/.env" "$@"
 }
 
 # Check which runtime is active
 runtime_name() {
-    if command -v container-compose &>/dev/null; then
+    if use_native; then
         echo "Apple Container"
     elif command -v docker &>/dev/null; then
         echo "Docker"
@@ -84,16 +76,16 @@ require_config() {
 }
 
 require_runtime() {
-    if ! command -v container &>/dev/null && ! command -v docker &>/dev/null; then
+    if ! use_native && ! command -v docker &>/dev/null; then
         err "No container runtime installed."
-        err "Install with: brew install container container-compose"
+        err "Install Apple Container: brew install container"
         exit 1
     fi
     # Ensure Apple Container system is running
-    if command -v container &>/dev/null; then
+    if use_native; then
         if ! container system status &>/dev/null 2>&1; then
             info "Starting Apple Container system service..."
-            container system start 2>/dev/null || true
+            container system start --enable-kernel-install 2>/dev/null || true
         fi
     fi
 }
@@ -122,13 +114,22 @@ cmd_start() {
                 bash "$RAINBOW_ROOT/services/minecraft/start.sh"
                 ;;
             *)
+                if use_native; then
+                    err "Per-service start isn't supported on Apple Container yet."
+                    err "Use 'rainbow start' (no service name) to bring up the whole stack."
+                    exit 1
+                fi
                 info "Starting $service..."
                 compose up -d "$service"
                 ;;
         esac
     else
         info "Starting all Rainbow services ($(runtime_name))..."
-        compose up -d
+        if use_native; then
+            bash "$ORCHESTRATOR" minimum
+        else
+            compose up -d
+        fi
         # Start native services
         if command -v stalwart-mail &>/dev/null; then
             brew services start stalwart-mail 2>/dev/null || true
@@ -159,12 +160,21 @@ cmd_stop() {
                 ;;
             *)
                 info "Stopping $service..."
-                compose stop "$service"
+                if use_native; then
+                    container stop "rainbow-$service" 2>/dev/null || \
+                        container stop "$service" 2>/dev/null || true
+                else
+                    compose stop "$service"
+                fi
                 ;;
         esac
     else
         info "Stopping all Rainbow services..."
-        compose down
+        if use_native; then
+            bash "$ORCHESTRATOR" stop
+        else
+            compose down
+        fi
         brew services stop stalwart-mail 2>/dev/null || true
         brew services stop jellyfin 2>/dev/null || true
         pkill -f "paper.*\.jar" 2>/dev/null || true
@@ -239,12 +249,19 @@ cmd_logs() {
     require_config
 
     if [ -z "$service" ]; then
+        if use_native; then
+            err "Use 'rainbow logs <service>' (per-service) on Apple Container."
+            err "Containers: $(container ls --format json 2>/dev/null | yq -p=json '.[].configuration.id' | tr '\n' ' ')"
+            exit 1
+        fi
         compose logs -f --tail=100
     else
         case "$service" in
             stalwart)
-                if [ -f /opt/rainbow/stalwart/logs/stalwart.log ]; then
-                    tail -f /opt/rainbow/stalwart/logs/stalwart.log
+                local stalwart_log
+                stalwart_log="$HOME/Library/Application Support/Rainbow/stalwart/logs/stalwart.log"
+                if [ -f "$stalwart_log" ]; then
+                    tail -f "$stalwart_log"
                 else
                     log show --predicate 'process == "stalwart-mail"' --last 1h --style compact
                 fi
@@ -253,7 +270,12 @@ cmd_logs() {
                 log show --predicate 'process == "jellyfin"' --last 1h --style compact
                 ;;
             *)
-                compose logs -f --tail=100 "$service"
+                if use_native; then
+                    container logs --follow "rainbow-$service" 2>/dev/null || \
+                        container logs --follow "$service"
+                else
+                    compose logs -f --tail=100 "$service"
+                fi
                 ;;
         esac
     fi
@@ -283,10 +305,23 @@ cmd_backup() {
 }
 
 cmd_update() {
-    info "Pulling latest images..."
-    compose pull
-    info "Restarting services..."
-    compose up -d
+    if use_native; then
+        info "Pulling latest images..."
+        for image in \
+            docker.io/library/postgres:17-alpine \
+            docker.io/valkey/valkey:8-alpine \
+            docker.io/library/caddy:2-alpine \
+            docker.io/cloudflare/cloudflared:latest; do
+            container image pull "$image" 2>&1 | tail -2 || true
+        done
+        info "Restarting services..."
+        bash "$ORCHESTRATOR" minimum
+    else
+        info "Pulling latest images..."
+        compose pull
+        info "Restarting services..."
+        compose up -d
+    fi
     ok "Update complete."
 }
 

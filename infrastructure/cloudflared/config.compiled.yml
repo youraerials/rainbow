@@ -7,9 +7,9 @@ credentials-file: /etc/cloudflared/credentials.json
 ingress:
   # All subdomains route to Caddy for internal routing
   - hostname: "*.test.rainbow.rocks"
-    service: http://192.168.66.19:80
+    service: http://192.168.66.33:80
   - hostname: "test.rainbow.rocks"
-    service: http://192.168.66.19:80
+    service: http://192.168.66.33:80
 
   # SMTP for email (Stalwart)
   - hostname: "mail.test.rainbow.rocks"
