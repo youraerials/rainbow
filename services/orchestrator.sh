@@ -116,6 +116,10 @@ start_postgres() {
     # PGDATA points at a subdir because Apple Container's volumes have a
     # lost+found entry from their ext4 backing, and initdb refuses to use a
     # non-empty mount root.
+    #
+    # We use Immich's official postgres image (pg14 + VectorChord + pgvecto-rs)
+    # because Immich requires a vector extension. Other services (Authentik,
+    # Seafile, etc.) work on pg14 just as well; they don't use the extensions.
     replace_container rainbow-postgres \
         --network backend \
         --env "POSTGRES_USER=${POSTGRES_USER:-rainbow}" \
@@ -124,7 +128,7 @@ start_postgres() {
         --env "PGDATA=/var/lib/postgresql/data/pgdata" \
         --mount "type=volume,source=rainbow-postgres-data,target=/var/lib/postgresql/data" \
         --volume "$INFRA_DIR/postgres/init:/docker-entrypoint-initdb.d:ro" \
-        docker.io/library/postgres:17-alpine \
+        ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0 \
         >/dev/null
 }
 
@@ -154,6 +158,47 @@ start_authentik_server() {
         ghcr.io/goauthentik/server:latest \
         server \
         >/dev/null
+}
+
+start_immich_ml() {
+    orch_info "Starting Immich ML..."
+    ensure_volume rainbow-immich-model-cache
+    replace_container rainbow-immich-ml \
+        --network backend \
+        --mount "type=volume,source=rainbow-immich-model-cache,target=/cache" \
+        ghcr.io/immich-app/immich-machine-learning:release \
+        >/dev/null
+}
+
+start_immich_server() {
+    local postgres_ip="$1" valkey_ip="$2" ml_ip="$3"
+    orch_info "Starting Immich server..."
+    ensure_volume rainbow-immich-upload
+    compile_immich_env "$postgres_ip" "$valkey_ip" "$ml_ip"
+    replace_container rainbow-immich \
+        --network frontend \
+        --network backend \
+        --env-file "$INFRA_DIR/immich/.env.compiled" \
+        --mount "type=volume,source=rainbow-immich-upload,target=/usr/src/app/upload" \
+        ghcr.io/immich-app/immich-server:release \
+        >/dev/null
+}
+
+# Render immich/.env.compiled with postgres/valkey/ML IPs substituted for the
+# default service-name hostnames. Also disables OAuth if the client ID hasn't
+# been provisioned yet — otherwise immich-server refuses to boot.
+compile_immich_env() {
+    local postgres_ip="$1" valkey_ip="$2" ml_ip="$3"
+    local src="$INFRA_DIR/immich/.env"
+    local dest="$INFRA_DIR/immich/.env.compiled"
+    sed \
+        -e "s|^DB_HOSTNAME=.*|DB_HOSTNAME=${postgres_ip}|" \
+        -e "s|^REDIS_HOSTNAME=.*|REDIS_HOSTNAME=${valkey_ip}|" \
+        -e "s|^IMMICH_MACHINE_LEARNING_URL=.*|IMMICH_MACHINE_LEARNING_URL=http://${ml_ip}:3003|" \
+        "$src" > "$dest"
+    if grep -q '^OAUTH_CLIENT_ID=$' "$dest"; then
+        sed -i '' 's|^OAUTH_ENABLED=true|OAUTH_ENABLED=false|' "$dest"
+    fi
 }
 
 start_authentik_worker() {
@@ -277,9 +322,22 @@ start_minimum() {
     local authentik_ip
     authentik_ip=$(wait_for_ip rainbow-authentik-server) \
         || { orch_err "authentik-server has no IP"; return 1; }
-    orch_ok "Authentik IP: $authentik_ip (will take a minute to finish DB migrations)"
+    orch_ok "Authentik IP: $authentik_ip (~1 min to finish DB migrations)"
 
-    compile_caddyfile "authentik-server=$authentik_ip"
+    start_immich_ml
+    local immich_ml_ip
+    immich_ml_ip=$(wait_for_ip rainbow-immich-ml) \
+        || { orch_err "immich-ml has no IP"; return 1; }
+
+    start_immich_server "$postgres_ip" "$valkey_ip" "$immich_ml_ip"
+    local immich_ip
+    immich_ip=$(wait_for_ip rainbow-immich) \
+        || { orch_err "immich-server has no IP"; return 1; }
+    orch_ok "Immich IP: $immich_ip (~1 min to finish DB migrations)"
+
+    compile_caddyfile \
+        "authentik-server=$authentik_ip" \
+        "immich-server=$immich_ip"
     start_caddy
     local caddy_ip
     caddy_ip=$(wait_for_ip rainbow-caddy) || { orch_err "caddy has no IP"; return 1; }

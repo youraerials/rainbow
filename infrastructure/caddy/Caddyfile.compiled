@@ -23,12 +23,12 @@ http://test-app.rainbow.rocks {
 
 # ─── Auth (Authentik) ────────────────────────────────────────────
 http://test-auth.rainbow.rocks {
-	reverse_proxy 192.168.66.36:9000
+	reverse_proxy 192.168.66.53:9000
 }
 
 # ─── Photos (Immich) ─────────────────────────────────────────────
 http://test-photos.rainbow.rocks {
-	reverse_proxy immich-server:2283
+	reverse_proxy 192.168.66.54:2283
 }
 
 # ─── Email (Stalwart) ────────────────────────────────────────────

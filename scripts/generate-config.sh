@@ -212,7 +212,8 @@ EOF
             "POSTGRES_USER" "$pg_user" \
             "POSTGRES_PASSWORD" "$pg_password" \
             "IMMICH_ML_ENABLED" "$immich_ml_enabled" \
-            "RAINBOW_DOMAIN" "$domain" \
+            "HOST_PREFIX" "$host_prefix" \
+            "ZONE" "$zone" \
             "OAUTH_PHOTOS_CLIENT_ID" "$oauth_photos_id" \
             "OAUTH_PHOTOS_CLIENT_SECRET" "$oauth_photos_secret"
     fi
