@@ -160,6 +160,76 @@ start_authentik_server() {
         >/dev/null
 }
 
+start_mariadb() {
+    orch_info "Starting MariaDB (for Seafile)..."
+    : "${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD missing — run make setup}"
+    ensure_volume rainbow-mariadb-data
+    # MARIADB_ROOT_HOST=% lets root connect from any container IP — without it,
+    # MariaDB only accepts root from localhost, and Seafile (on a different
+    # container) gets "Host 'X.Y.Z.W' is not allowed". Backend network is the
+    # security boundary here, not MariaDB's host ACL.
+    replace_container rainbow-mariadb \
+        --network backend \
+        --env "MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}" \
+        --env "MARIADB_ROOT_HOST=%" \
+        --mount "type=volume,source=rainbow-mariadb-data,target=/var/lib/mysql" \
+        docker.io/library/mariadb:11 \
+        >/dev/null
+}
+
+start_seafile() {
+    local mariadb_ip="$1"
+    orch_info "Starting Seafile..."
+    ensure_volume rainbow-seafile-data
+    compile_seafile_env "$mariadb_ip"
+    replace_container rainbow-seafile \
+        --network frontend \
+        --network backend \
+        --env-file "$INFRA_DIR/seafile/.env.compiled" \
+        --mount "type=volume,source=rainbow-seafile-data,target=/shared" \
+        docker.io/seafileltd/seafile-mc:latest \
+        >/dev/null
+}
+
+# Render seafile/.env.compiled with the MariaDB container's IP substituted for
+# the placeholder `DB_HOST=mariadb`.
+compile_seafile_env() {
+    local mariadb_ip="$1"
+    local src="$INFRA_DIR/seafile/.env"
+    local dest="$INFRA_DIR/seafile/.env.compiled"
+    sed -e "s|^DB_HOST=.*|DB_HOST=${mariadb_ip}|" "$src" > "$dest"
+}
+
+start_cryptpad() {
+    orch_info "Starting CryptPad..."
+    ensure_volume rainbow-cryptpad-blob
+    ensure_volume rainbow-cryptpad-block
+    ensure_volume rainbow-cryptpad-data
+    ensure_volume rainbow-cryptpad-datastore
+    # CryptPad's entrypoint requires CPAD_CONF env to point at a config file;
+    # without it the entrypoint silently corrupts (cp into empty path) and the
+    # container exits before npm even starts. CPAD_MAIN_DOMAIN / SANDBOX_DOMAIN
+    # are also required so the entrypoint can write them into the default config
+    # if our mounted file is missing.
+    local prefix zone host_prefix
+    prefix=$(yq eval '.domain.prefix' "$CONFIG_FILE")
+    zone=$(yq eval '.domain.zone' "$CONFIG_FILE")
+    [ "$prefix" = "null" ] && prefix=""
+    [ -n "$prefix" ] && host_prefix="${prefix}-" || host_prefix=""
+    replace_container rainbow-cryptpad \
+        --network frontend \
+        --env "CPAD_CONF=/cryptpad/config/config.js" \
+        --env "CPAD_MAIN_DOMAIN=https://${host_prefix}docs.${zone}" \
+        --env "CPAD_SANDBOX_DOMAIN=https://${host_prefix}docs-sandbox.${zone}" \
+        --volume "$INFRA_DIR/cryptpad/customize/config.js:/cryptpad/config/config.js:ro" \
+        --mount "type=volume,source=rainbow-cryptpad-blob,target=/cryptpad/blob" \
+        --mount "type=volume,source=rainbow-cryptpad-block,target=/cryptpad/block" \
+        --mount "type=volume,source=rainbow-cryptpad-data,target=/cryptpad/data" \
+        --mount "type=volume,source=rainbow-cryptpad-datastore,target=/cryptpad/datastore" \
+        docker.io/cryptpad/cryptpad:latest \
+        >/dev/null
+}
+
 start_immich_ml() {
     orch_info "Starting Immich ML..."
     ensure_volume rainbow-immich-model-cache
@@ -317,6 +387,10 @@ start_minimum() {
     local valkey_ip
     valkey_ip=$(wait_for_ip rainbow-valkey) || { orch_err "valkey has no IP"; return 1; }
 
+    start_mariadb
+    local mariadb_ip
+    mariadb_ip=$(wait_for_ip rainbow-mariadb) || { orch_err "mariadb has no IP"; return 1; }
+
     start_authentik_server "$postgres_ip" "$valkey_ip"
     start_authentik_worker
     local authentik_ip
@@ -335,9 +409,22 @@ start_minimum() {
         || { orch_err "immich-server has no IP"; return 1; }
     orch_ok "Immich IP: $immich_ip (~1 min to finish DB migrations)"
 
+    start_cryptpad
+    local cryptpad_ip
+    cryptpad_ip=$(wait_for_ip rainbow-cryptpad) \
+        || { orch_err "cryptpad has no IP"; return 1; }
+
+    start_seafile "$mariadb_ip"
+    local seafile_ip
+    seafile_ip=$(wait_for_ip rainbow-seafile) \
+        || { orch_err "seafile has no IP"; return 1; }
+    orch_ok "Seafile IP: $seafile_ip (~1-2 min for first-run database init)"
+
     compile_caddyfile \
         "authentik-server=$authentik_ip" \
-        "immich-server=$immich_ip"
+        "immich-server=$immich_ip" \
+        "cryptpad=$cryptpad_ip" \
+        "seafile=$seafile_ip"
     start_caddy
     local caddy_ip
     caddy_ip=$(wait_for_ip rainbow-caddy) || { orch_err "caddy has no IP"; return 1; }
@@ -367,6 +454,7 @@ RAINBOW_CONTAINERS=(
     rainbow-authentik-worker
     rainbow-postgres
     rainbow-valkey
+    rainbow-mariadb
     rainbow-immich
     rainbow-immich-ml
     rainbow-cryptpad

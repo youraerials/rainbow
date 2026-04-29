@@ -121,9 +121,10 @@ main() {
     seafile_data=$(expand_path "$(cfg '.services.seafile.data_path')")
 
     # ── Secrets from Keychain ────────────────────────────────────
-    local pg_password authentik_secret authentik_bootstrap_pass
+    local pg_password mariadb_root_pass authentik_secret authentik_bootstrap_pass
     local stalwart_admin_pass seafile_admin_pass cf_tunnel_token
     pg_password=$(keychain_get "postgres-password")
+    mariadb_root_pass=$(keychain_get "mariadb-root-password")
     authentik_secret=$(keychain_get "authentik-secret")
     authentik_bootstrap_pass=$(keychain_get "authentik-bootstrap-password")
     stalwart_admin_pass=$(keychain_get "stalwart-admin-password")
@@ -152,6 +153,7 @@ RAINBOW_ZONE=${zone}
 RAINBOW_DOMAIN=${domain}
 POSTGRES_USER=${pg_user}
 POSTGRES_PASSWORD=${pg_password}
+MARIADB_ROOT_PASSWORD=${mariadb_root_pass}
 AUTHENTIK_SECRET_KEY=${authentik_secret}
 AUTHENTIK_BOOTSTRAP_PASSWORD=${authentik_bootstrap_pass}
 AUTHENTIK_BOOTSTRAP_EMAIL=${admin_email}
@@ -234,14 +236,17 @@ EOF
         render_template \
             "$TEMPLATES_DIR/seafile/.env.j2" \
             "$INFRA_DIR/seafile/.env" \
-            "POSTGRES_PASSWORD" "$pg_password" \
+            "MARIADB_ROOT_PASSWORD" "$mariadb_root_pass" \
             "ADMIN_EMAIL" "$admin_email" \
             "SEAFILE_ADMIN_PASSWORD" "$seafile_admin_pass" \
-            "RAINBOW_DOMAIN" "$domain"
+            "HOST_PREFIX" "$host_prefix" \
+            "ZONE" "$zone"
 
         render_template \
             "$TEMPLATES_DIR/seafile/seahub_settings_extra.py.j2" \
             "$INFRA_DIR/seafile/seahub_settings_extra.py" \
+            "HOST_PREFIX" "$host_prefix" \
+            "ZONE" "$zone" \
             "RAINBOW_DOMAIN" "$domain" \
             "OAUTH_FILES_CLIENT_ID" "$oauth_files_id" \
             "OAUTH_FILES_CLIENT_SECRET" "$oauth_files_secret"
@@ -254,7 +259,8 @@ EOF
         render_template \
             "$TEMPLATES_DIR/cryptpad/config.js.j2" \
             "$INFRA_DIR/cryptpad/customize/config.js" \
-            "RAINBOW_DOMAIN" "$domain" \
+            "HOST_PREFIX" "$host_prefix" \
+            "ZONE" "$zone" \
             "CRYPTPAD_ADMIN_KEY" "$cryptpad_admin_key"
     fi
 

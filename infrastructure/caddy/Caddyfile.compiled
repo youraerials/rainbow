@@ -23,12 +23,12 @@ http://test-app.rainbow.rocks {
 
 # ─── Auth (Authentik) ────────────────────────────────────────────
 http://test-auth.rainbow.rocks {
-	reverse_proxy 192.168.66.53:9000
+	reverse_proxy 192.168.66.74:9000
 }
 
 # ─── Photos (Immich) ─────────────────────────────────────────────
 http://test-photos.rainbow.rocks {
-	reverse_proxy 192.168.66.54:2283
+	reverse_proxy 192.168.66.75:2283
 }
 
 # ─── Email (Stalwart) ────────────────────────────────────────────
@@ -38,16 +38,16 @@ http://test-mail.rainbow.rocks {
 
 # ─── Files (Seafile) ─────────────────────────────────────────────
 http://test-files.rainbow.rocks {
-	reverse_proxy seafile:80
+	reverse_proxy 192.168.66.77:80
 }
 
 # ─── Docs (CryptPad) ─────────────────────────────────────────────
 http://test-docs.rainbow.rocks {
-	reverse_proxy cryptpad:3000
+	reverse_proxy 192.168.66.76:3000
 }
 
 http://test-docs-sandbox.rainbow.rocks {
-	reverse_proxy cryptpad:3001
+	reverse_proxy 192.168.66.76:3001
 }
 
 # ─── Media (Jellyfin) ────────────────────────────────────────────
