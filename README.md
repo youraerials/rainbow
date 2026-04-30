@@ -1,34 +1,42 @@
 # Rainbow
 
-**Take back your digital life.** Rainbow turns a Mac Mini into a complete self-hosted platform — email, photos, files, documents, media, gaming, and AI — replacing Google and other cloud services. All your data stays on your hardware.
+**Take back your digital life.** Rainbow turns a Mac Mini into a complete self-hosted platform — email, photos, files, documents, media, and AI — replacing Google and other cloud services. All your data stays on your hardware.
 
 ## What You Get
 
-| Service | Powered By | Access |
-|---------|-----------|--------|
-| Photos & Videos | [Immich](https://immich.app) | `photos.yourdomain.rainbow.rocks` |
-| Email, Calendar, Contacts | [Stalwart](https://stalw.art) | `mail.yourdomain.rainbow.rocks` |
-| Collaborative Documents | [CryptPad](https://cryptpad.org) | `docs.yourdomain.rainbow.rocks` |
-| File Sharing & Sync | [Seafile](https://www.seafile.com) | `files.yourdomain.rainbow.rocks` |
-| Media Server | [Jellyfin](https://jellyfin.org) | `media.yourdomain.rainbow.rocks` |
-| Identity & Auth | [Authentik](https://goauthentik.io) | `auth.yourdomain.rainbow.rocks` |
-| Minecraft Server | [Paper](https://papermc.io) | `mc.yourdomain.rainbow.rocks` |
-| AI App Builder | Claude API | `app.yourdomain.rainbow.rocks` |
-| Encrypted Backups | [Restic](https://restic.net) | Automatic, cloud-stored |
+| Service | Powered By |
+|---------|-----------|
+| Photos & Videos | [Immich](https://immich.app) |
+| Email, Calendar, Contacts | [Stalwart](https://stalw.art) |
+| Collaborative Documents | [CryptPad](https://cryptpad.org) |
+| File Sharing & Sync | [Seafile](https://www.seafile.com) |
+| Media Server | [Jellyfin](https://jellyfin.org) |
+| Identity & SSO | [Authentik](https://goauthentik.io) |
+| AI App Builder | Claude API |
+| Encrypted Backups | [Restic](https://restic.net) |
+
+Routed at `<prefix>-<service>.<zone>` (level-1 subdomains, all covered by Cloudflare Universal SSL). Examples:
+
+- `aubrey-photos.rainbow.rocks`
+- `aubrey-auth.rainbow.rocks`
+- `aubrey-files.rainbow.rocks`
+
+Or bring your own domain: `auth.example.com`, `photos.example.com`, etc.
 
 ## Status
 
-**Rainbow is in early development.** The scaffolding is complete across all eight phases, but most services have not been verified end-to-end. Expect breakage, especially around the AI app builder, MCP gateway, and the Authentik SSO integration.
+**Rainbow is in early development.** Validated end-to-end on macOS 26 with 13 containers running, working SSO between Authentik and Immich, all six service URLs serving HTTPS through a real Cloudflare Tunnel. Many sharp edges remain — see "What works / What doesn't" below.
 
-There is no separate "dev mode." Rainbow is tested through a real Cloudflare Tunnel against a real domain — that's the only way to know which services actually work. Use the test-tunnel flow below for development.
+There is no separate "dev mode." Rainbow is tested through a real Cloudflare Tunnel against a real domain, the same way users will run it.
 
 ## Quick Start
 
 ### Prerequisites
 
-- Mac Mini or Mac laptop (M1 or later, 16GB+ RAM recommended)
+- Mac Mini or Mac laptop, M1 or later, 16GB+ RAM
 - macOS 26 (Tahoe) or later
 - A Cloudflare account with a zone you control (e.g. `rainbow.rocks` or your own domain)
+- ~10 GB free disk for container images
 
 ### Install
 
@@ -37,145 +45,107 @@ There is no separate "dev mode." Rainbow is tested through a real Cloudflare Tun
 git clone https://github.com/youraerials/rainbow.git
 cd rainbow
 
-# 2. Install dependencies (Apple Container, container-compose, cloudflared, restic, yq, jq)
+# 2. Install dependencies (Apple Container, cloudflared, restic, yq, jq)
 make install
 
-# 3. Set up a Cloudflare Tunnel for testing
-#    Defaults to test.rainbow.rocks. Use --domain to bring your own domain.
+# 3. Set up a Cloudflare Tunnel — opens browser for cloudflared login
+#    Defaults to prefix=test on rainbow.rocks. Override with --prefix or --domain.
 make setup-test-tunnel
 
-# 4. Store the remaining secrets in macOS Keychain
-security add-generic-password -s "rainbow-postgres-password" -a rainbow -w "$(openssl rand -hex 24)"
-security add-generic-password -s "rainbow-authentik-secret"  -a rainbow -w "$(openssl rand -hex 32)"
-security add-generic-password -s "rainbow-cloudflare-api-token" -a rainbow -w "your-cf-api-token"
+# 4. Seed remaining secrets in macOS Keychain
+for s in postgres-password authentik-secret authentik-bootstrap-password \
+         mariadb-root-password seafile-admin-password cryptpad-admin-key \
+         immich-admin-password; do
+  security add-generic-password -s "rainbow-$s" -a rainbow -w "$(openssl rand -hex 24)" -U
+done
 
-# 5. Set cloudflare.zone_id in config/rainbow.yaml
-#    (find it on the zone overview page in the Cloudflare dashboard)
-
-# 6. Generate per-service configs and start
+# 5. Generate per-service configs and start the stack
 make setup
 make start
 
-# 7. Check status and run the integration tests to see what works
+# 6. Open Authentik and create an API token (one-time, manual)
+#    Visit https://<prefix>-auth.<zone> → Admin → Directory → Tokens & App passwords → Create
+#    User: akadmin, Intent: API Token, Expiring: off → Copy the Key
+security add-generic-password -s rainbow-authentik-api-token -a rainbow -w '<paste-key>'
+
+# 7. Configure OAuth providers and apply to services
+./services/authentik/setup-providers.sh
+make stop && make start    # post-start hooks pick up the new credentials
+
+# 8. Check status
 make status
-make test
 ```
 
-### Using the Setup Wizard (Recommended for end users)
+After step 7, opening `https://<prefix>-photos.<zone>` shows a "Login with Rainbow" button and full SSO works.
 
-For a guided setup experience, run the installer package which launches a SwiftUI setup wizard. It handles domain registration, Cloudflare tunnel creation, secret storage, and service configuration automatically.
+## What works / What doesn't
+
+| | Status |
+|---|---|
+| Apple Container orchestration via `services/orchestrator.sh` | ✓ |
+| HTTPS via Cloudflare Tunnel + Universal SSL on level-1 subdomains | ✓ |
+| Authentik bootstrap + login | ✓ |
+| Immich SSO (Authentik OIDC, auto-register) | ✓ end-to-end |
+| Caddy routes to all 6 service hostnames | ✓ |
+| Postgres + Valkey + MariaDB shared by app services | ✓ |
+| Dashboard (React) served as static bundle | ✓ (no API backend yet) |
+| Stalwart admin UI reachable | ✓ (first-run setup is manual) |
+| Jellyfin reachable | ✓ (no Metal hwaccel — see CLAUDE.md trade-off) |
+| Seafile reachable, Authentik provider configured | partial — `seahub_settings_extra.py` not yet auto-injected into the container |
+| CryptPad SSO | not yet (needs Authentik proxy outpost) |
+| Mail send/receive (incoming SMTP) | not yet (needs port 25 ingress) |
+| Backups via Restic | scaffolded, not exercised |
+| MCP gateway routing | scaffolded, not running |
 
 ## Architecture
 
 ```
 Internet
-  |
-  v
-Cloudflare Edge (DNS + TLS)
-  |
-  v (Cloudflare Tunnel — encrypted, outbound-only, no open ports)
-  |
-  v
-Caddy (reverse proxy on localhost)
-  |
-  +---> Immich (photos)
-  +---> Stalwart (email/calendar) — native
-  +---> CryptPad (docs)
-  +---> Seafile (files)
-  +---> Jellyfin (media) — native
-  +---> Authentik (auth)
+  │
+  ▼
+Cloudflare Edge (Universal SSL on *.rainbow.rocks)
+  │
+  ▼  outbound-only encrypted tunnel
+cloudflared container
+  │
+  ▼  HTTP via container network
+Caddy (reverse proxy, IP-substituted at runtime)
+  │
+  ├─→ Authentik (auth + SSO)
+  ├─→ Immich (photos)
+  ├─→ Stalwart (email)
+  ├─→ Seafile (files) → MariaDB
+  ├─→ CryptPad (docs)
+  ├─→ Jellyfin (media)
+  └─→ Dashboard (static bundle)
+
+(Postgres + Valkey on a separate `backend` network, not directly exposed)
 ```
 
-**Zero open ports.** Cloudflare Tunnel creates an outbound-only encrypted connection from your Mac Mini to Cloudflare's edge network. No router port forwarding needed.
+**Zero open ports for HTTPS.** Cloudflare Tunnel creates an outbound-only encrypted connection from your Mac to Cloudflare's edge. No router port forwarding needed. SMTP for mail (if you want to receive externally) does need separate ingress.
 
-**No Docker required.** Rainbow uses [Apple Container](https://github.com/apple/container) — Apple's native, open-source container runtime. Each service runs in its own lightweight VM via Virtualization.framework, providing stronger isolation than traditional containers. Orchestration is handled by [container-compose](https://github.com/Mcrich23/Container-Compose).
+**Apple Container, not Docker.** Each service runs in its own lightweight VM via Virtualization.framework. Stronger isolation than docker bridge networking, at the cost of no DNS-by-name between containers — which is why the orchestrator does runtime IP substitution. See `services/orchestrator.sh`.
 
 ## CLI
 
 ```bash
-rainbow start [service]    # Start all or a specific service
-rainbow stop [service]     # Stop all or a specific service
+rainbow start [service]    # Start all or one service
+rainbow stop [service]     # Stop all or one service
 rainbow status             # Show service status and URLs
-rainbow logs [service]     # Follow service logs
+rainbow logs <service>     # Follow service logs
 rainbow config apply       # Regenerate configs from rainbow.yaml
-rainbow config edit        # Open config in your editor
-rainbow backup             # Run a backup now
+rainbow backup             # Run a Restic snapshot now
 rainbow update             # Pull latest images and restart
 ```
 
-## Testing
-
-Rainbow includes a comprehensive integration test suite that verifies every service, DNS record, tunnel, email delivery, and more.
-
-```bash
-make test              # Full test suite (18 sections, ~2 minutes)
-make test-quick        # Skip slow tests like email delivery and backups
-
-# Run a single section
-./scripts/test-all.sh --section dns
-./scripts/test-all.sh --section email
-./scripts/test-all.sh --section tunnel
-./scripts/test-all.sh --section security
-```
-
-The test suite checks: prerequisites, all containers and native services, HTTP endpoints, PostgreSQL and Valkey, DNS records (MX/SPF/DKIM/DMARC), Cloudflare Tunnel reachability and TLS, email send and delivery via JMAP, Immich/Seafile/CryptPad/Jellyfin APIs, Authentik SSO, Minecraft RCON, backup configuration, DDNS, MCP gateway, and security (exposed ports, Keychain secrets, config hygiene). Disabled services are automatically skipped.
-
 ## Configuration
 
-All configuration lives in `config/rainbow.yaml` — one file to rule them all. Edit it, then run `rainbow config apply` to regenerate per-service configs.
-
-Secrets (API keys, passwords) are stored in the macOS Keychain and injected at config generation time. They never touch disk in plaintext.
+Everything lives in `config/rainbow.yaml`. Edit it, then `make config && make start`. Secrets stay in macOS Keychain — `generate-config.sh` reads them at render time and writes them into per-service `.env` files under `infrastructure/`.
 
 ## Backups
 
-Rainbow uses Restic for encrypted, deduplicated backups to any S3-compatible storage (AWS S3, Backblaze B2, Cloudflare R2, etc.).
-
-- All data is encrypted client-side before upload
-- The cloud provider cannot read your data
-- Incremental backups are fast and space-efficient
-- Default retention: 7 daily, 4 weekly, 6 monthly snapshots
-
-## AI Integration
-
-Every Rainbow service is accessible via MCP (Model Context Protocol) servers. This means AI assistants can:
-
-- Search your photos, emails, and files
-- Send emails and manage your calendar
-- Create and share documents
-- Manage your Minecraft server
-- Build and deploy custom web apps on your domain
-
-The built-in App Builder lets you describe an application in plain English, and Claude will build and deploy it to your server.
-
-## Project Structure
-
-```
-rainbow/
-├── config/          # Configuration (rainbow.yaml + templates)
-├── infrastructure/  # Docker Compose + service data
-├── services/        # Native service management (Stalwart, Jellyfin)
-├── cloudflare/      # Cloudflare Workers (subdomain management)
-├── mcp/             # MCP servers (AI integration)
-├── app-builder/     # AI-powered app builder
-├── dashboard/       # Web UI
-├── backups/         # Backup scripts + schedules
-├── cli/             # rainbow CLI tool
-├── installer/       # macOS .pkg installer + setup wizard
-├── docs/            # Documentation
-└── scripts/         # Development utilities
-```
-
-## Security
-
-- All external traffic encrypted via Cloudflare Tunnel (no open ports)
-- Single sign-on via Authentik across all services
-- Secrets stored in macOS Keychain, never in config files
-- Backups encrypted client-side with Restic
-- Services isolated via Docker networks
-- Native services (Stalwart, Jellyfin) run under standard user permissions
+Restic-encrypted, deduplicated, to any S3-compatible storage (S3, B2, Cloudflare R2, etc.). All data is encrypted client-side before upload — the cloud provider can't read it. Default retention: 7 daily, 4 weekly, 6 monthly.
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE) for details.
-
-Rainbow orchestrates several open-source projects (Immich, Stalwart, CryptPad, Jellyfin, Seafile, Authentik, Paper, Caddy, PostgreSQL, Valkey, Restic) which retain their own licenses. Rainbow does not bundle these — they run as separate processes. See [NOTICE](NOTICE) for full attribution.
+Apache 2.0 — see [LICENSE](LICENSE) for details. Rainbow orchestrates several open-source projects (Immich, Stalwart, CryptPad, Jellyfin, Seafile, Authentik, Caddy, PostgreSQL, MariaDB, Valkey, Restic) which retain their own licenses. Rainbow does not bundle these — they run as separate container processes. See [NOTICE](NOTICE) for full attribution.

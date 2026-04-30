@@ -97,45 +97,19 @@ cmd_start() {
     require_runtime
 
     if [ -n "$service" ]; then
-        case "$service" in
-            stalwart)
-                info "Starting Stalwart mail server..."
-                brew services start stalwart-mail 2>/dev/null || \
-                    launchctl load "$RAINBOW_ROOT/services/stalwart/launchd/art.stalw.mail.plist" 2>/dev/null || \
-                    err "Failed to start Stalwart. Is it installed?"
-                ;;
-            jellyfin)
-                info "Starting Jellyfin..."
-                brew services start jellyfin 2>/dev/null || \
-                    err "Failed to start Jellyfin. Is it installed?"
-                ;;
-            minecraft)
-                info "Starting Minecraft server..."
-                bash "$RAINBOW_ROOT/services/minecraft/start.sh"
-                ;;
-            *)
-                if use_native; then
-                    err "Per-service start isn't supported on Apple Container yet."
-                    err "Use 'rainbow start' (no service name) to bring up the whole stack."
-                    exit 1
-                fi
-                info "Starting $service..."
-                compose up -d "$service"
-                ;;
-        esac
+        if use_native; then
+            err "Per-service start isn't supported on Apple Container yet."
+            err "Use 'rainbow start' (no service name) to bring up the whole stack."
+            exit 1
+        fi
+        info "Starting $service..."
+        compose up -d "$service"
     else
         info "Starting all Rainbow services ($(runtime_name))..."
         if use_native; then
             bash "$ORCHESTRATOR" minimum
         else
             compose up -d
-        fi
-        # Start native services
-        if command -v stalwart-mail &>/dev/null; then
-            brew services start stalwart-mail 2>/dev/null || true
-        fi
-        if command -v jellyfin &>/dev/null; then
-            brew services start jellyfin 2>/dev/null || true
         fi
         ok "All services started."
     fi
@@ -145,21 +119,9 @@ cmd_stop() {
     local service="${1:-}"
 
     if [ -n "$service" ]; then
+        info "Stopping $service..."
         case "$service" in
-            stalwart)
-                info "Stopping Stalwart mail server..."
-                brew services stop stalwart-mail 2>/dev/null || true
-                ;;
-            jellyfin)
-                info "Stopping Jellyfin..."
-                brew services stop jellyfin 2>/dev/null || true
-                ;;
-            minecraft)
-                info "Stopping Minecraft server..."
-                pkill -f "paper.*\.jar" 2>/dev/null || true
-                ;;
             *)
-                info "Stopping $service..."
                 if use_native; then
                     container stop "rainbow-$service" 2>/dev/null || \
                         container stop "$service" 2>/dev/null || true
@@ -187,9 +149,8 @@ cmd_status() {
     echo -e "  Runtime: $(runtime_name)"
     echo ""
 
-    # Container services
     if [ -f "$INFRA_DIR/.env" ]; then
-        echo -e "${BOLD}Container Services:${NC}"
+        echo -e "${BOLD}Containers:${NC}"
         if command -v container &>/dev/null; then
             container list 2>/dev/null | grep rainbow || \
                 warn "No rainbow containers running."
@@ -202,44 +163,23 @@ cmd_status() {
     fi
 
     echo ""
-    echo -e "${BOLD}Native Services:${NC}"
-
-    # Stalwart
-    if pgrep -x stalwart-mail &>/dev/null; then
-        echo -e "  Stalwart Mail:  ${GREEN}running${NC}"
-    else
-        echo -e "  Stalwart Mail:  ${RED}stopped${NC}"
-    fi
-
-    # Jellyfin
-    if pgrep -x jellyfin &>/dev/null; then
-        echo -e "  Jellyfin:       ${GREEN}running${NC}"
-    else
-        echo -e "  Jellyfin:       ${RED}stopped${NC}"
-    fi
-
-    # Minecraft
-    if pgrep -f "paper.*\.jar" &>/dev/null; then
-        echo -e "  Minecraft:      ${GREEN}running${NC}"
-    else
-        echo -e "  Minecraft:      ${RED}stopped${NC}"
-    fi
-
-    echo ""
 
     # Show domain info
     if [ -f "$CONFIG_FILE" ] && command -v yq &>/dev/null; then
-        local domain
-        domain=$(yq eval '.domain.primary' "$CONFIG_FILE" 2>/dev/null)
-        if [ -n "$domain" ] && [ "$domain" != "null" ]; then
+        local prefix zone host_prefix
+        prefix=$(yq eval '.domain.prefix // ""' "$CONFIG_FILE" 2>/dev/null)
+        zone=$(yq eval '.domain.zone' "$CONFIG_FILE" 2>/dev/null)
+        [ "$prefix" = "null" ] && prefix=""
+        [ -n "$prefix" ] && host_prefix="${prefix}-" || host_prefix=""
+        if [ -n "$zone" ] && [ "$zone" != "null" ]; then
             echo -e "${BOLD}Access URLs:${NC}"
-            echo "  Dashboard:  https://app.$domain"
-            echo "  Photos:     https://photos.$domain"
-            echo "  Email:      https://mail.$domain"
-            echo "  Files:      https://files.$domain"
-            echo "  Docs:       https://docs.$domain"
-            echo "  Media:      https://media.$domain"
-            echo "  Auth:       https://auth.$domain"
+            echo "  Dashboard:  https://${host_prefix}app.${zone}"
+            echo "  Auth:       https://${host_prefix}auth.${zone}"
+            echo "  Photos:     https://${host_prefix}photos.${zone}"
+            echo "  Email:      https://${host_prefix}mail.${zone}"
+            echo "  Files:      https://${host_prefix}files.${zone}"
+            echo "  Docs:       https://${host_prefix}docs.${zone}"
+            echo "  Media:      https://${host_prefix}media.${zone}"
         fi
     fi
 }
@@ -256,28 +196,12 @@ cmd_logs() {
         fi
         compose logs -f --tail=100
     else
-        case "$service" in
-            stalwart)
-                local stalwart_log
-                stalwart_log="$HOME/Library/Application Support/Rainbow/stalwart/logs/stalwart.log"
-                if [ -f "$stalwart_log" ]; then
-                    tail -f "$stalwart_log"
-                else
-                    log show --predicate 'process == "stalwart-mail"' --last 1h --style compact
-                fi
-                ;;
-            jellyfin)
-                log show --predicate 'process == "jellyfin"' --last 1h --style compact
-                ;;
-            *)
-                if use_native; then
-                    container logs --follow "rainbow-$service" 2>/dev/null || \
-                        container logs --follow "$service"
-                else
-                    compose logs -f --tail=100 "$service"
-                fi
-                ;;
-        esac
+        if use_native; then
+            container logs --follow "rainbow-$service" 2>/dev/null || \
+                container logs --follow "$service"
+        else
+            compose logs -f --tail=100 "$service"
+        fi
     fi
 }
 

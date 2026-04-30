@@ -1,17 +1,17 @@
 # Getting Started with Rainbow
 
-This guide walks you through setting up Rainbow on a Mac Mini.
+This is the friendly walkthrough. The [README](../README.md) has the dense version.
 
 ## Prerequisites
 
-- **Hardware**: Mac Mini with M1 chip or later
-- **RAM**: 16GB minimum, 32GB recommended
-- **Storage**: 256GB+ internal (512GB+ recommended for photos/media)
-- **macOS**: Version 26 (Tahoe) or later
-- **Internet**: Home broadband connection
-- **Cloudflare account**: Free tier is sufficient ([sign up](https://dash.cloudflare.com/sign-up))
+- **Hardware:** Mac Mini or Mac laptop, M1 chip or later
+- **RAM:** 16 GB minimum, 32 GB if you also want Minecraft + heavy Immich ML
+- **Storage:** ~10 GB for container images plus whatever your photos/media will need
+- **macOS:** Version 26 (Tahoe) — Apple Container requires it
+- **Internet:** A normal home connection. No static IP needed.
+- **Cloudflare account:** Free tier is fine. [Sign up here.](https://dash.cloudflare.com/sign-up)
 
-## Step 1: Clone and Install
+## Step 1: Clone and install dependencies
 
 ```bash
 git clone https://github.com/youraerials/rainbow.git
@@ -19,189 +19,143 @@ cd rainbow
 make install
 ```
 
-This installs:
-- Homebrew (if missing)
-- Apple Container + container-compose (native macOS container runtime)
-- yq, jq, restic, cloudflared
-- Stalwart mail server
-- Jellyfin media server
+`make install` brings in:
 
-## Step 2: Set Up Cloudflare
+- **`container`** — Apple's native container runtime
+- **`cloudflared`** — Cloudflare's tunnel client
+- **`yq`, `jq`** — YAML/JSON parsers used by the orchestrator scripts
+- **`restic`** — backup tool
 
-### Register a domain or claim a subdomain
+It also starts the Apple Container system service and installs the default Kata kernel (one-time).
 
-**Option A: Use a rainbow.rocks subdomain** (recommended for getting started)
-- We'll provide a subdomain like `yourname.rainbow.rocks`
-- All service subdomains are created automatically
+## Step 2: Pick a domain layout and create a tunnel
 
-**Option B: Bring your own domain**
-- Add your domain to Cloudflare
-- Update nameservers to point to Cloudflare
+You have two options:
 
-### Create a Cloudflare Tunnel
+### Option A: shared `rainbow.rocks` zone (test setup, simplest)
+
+Default. Each service is at `<prefix>-<service>.rainbow.rocks` — e.g. `aubrey-photos.rainbow.rocks`. The prefix you pick has to be unique on the shared zone (first-come-first-served).
 
 ```bash
-# Login to Cloudflare
-cloudflared tunnel login
-
-# Create a tunnel
-cloudflared tunnel create rainbow
-
-# Note the tunnel ID and credentials file path
+make setup-test-tunnel             # uses prefix=test by default
+# or to claim your own prefix:
+./scripts/setup-test-tunnel.sh --prefix aubrey
 ```
 
-### Create a Cloudflare API token
+### Option B: bring your own domain
 
-1. Go to [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
-2. Create a token with permissions:
-   - Zone > DNS > Edit
-   - Zone > Zone > Read
-3. Save the token — you'll need it next
-
-## Step 3: Configure
-
-Edit `config/rainbow.yaml`:
-
-```yaml
-domain:
-  primary: "yourname.rainbow.rocks"
-
-admin:
-  name: "Your Name"
-  email: "you@yourname.rainbow.rocks"
-
-services:
-  # Disable anything you don't want:
-  minecraft:
-    enabled: false
-```
-
-### Store secrets in Keychain
+Buy a domain, add it to Cloudflare (point its nameservers at Cloudflare). Then:
 
 ```bash
-# PostgreSQL password
-security add-generic-password -s "rainbow-postgres-password" -a rainbow -w "$(openssl rand -hex 24)"
-
-# Authentik secret key
-security add-generic-password -s "rainbow-authentik-secret" -a rainbow -w "$(openssl rand -hex 32)"
-
-# Authentik admin password
-security add-generic-password -s "rainbow-authentik-bootstrap-password" -a rainbow -w "your-admin-password"
-
-# Stalwart mail admin password
-security add-generic-password -s "rainbow-stalwart-admin-password" -a rainbow -w "your-mail-admin-password"
-
-# Seafile admin password
-security add-generic-password -s "rainbow-seafile-admin-password" -a rainbow -w "your-seafile-password"
-
-# Cloudflare tunnel token
-security add-generic-password -s "rainbow-cloudflare-tunnel-token" -a rainbow -w "your-tunnel-token"
+./scripts/setup-test-tunnel.sh --domain example.com
 ```
 
-## Step 4: Generate Configs and Start
+Hostnames become `auth.example.com`, `photos.example.com`, etc. — first-level subdomains under your zone, all covered by Cloudflare's free Universal SSL.
+
+In either case, `setup-test-tunnel` will:
+
+1. Open your browser for `cloudflared login`
+2. Create a Cloudflare Tunnel named `rainbow-test`
+3. Add DNS routes for every service hostname
+4. Save the tunnel token to your macOS Keychain
+5. Update `config/rainbow.yaml` with your domain choice
+
+## Step 3: Seed the rest of your secrets
+
+Rainbow keeps every password in your macOS Keychain so nothing is on disk in plaintext. Generate them all in one go:
 
 ```bash
-# Generate all service configurations
-rainbow config apply
-
-# Start everything
-rainbow start
-
-# Check status
-rainbow status
+for s in postgres-password authentik-secret authentik-bootstrap-password \
+         mariadb-root-password seafile-admin-password cryptpad-admin-key \
+         immich-admin-password; do
+  security add-generic-password -s "rainbow-$s" -a rainbow -w "$(openssl rand -hex 24)" -U
+done
 ```
 
-## Step 5: Access Your Services
-
-Once running, your services are available at:
-
-| Service | URL |
-|---------|-----|
-| Dashboard | `https://app.yourname.rainbow.rocks` |
-| Photos | `https://photos.yourname.rainbow.rocks` |
-| Email | `https://mail.yourname.rainbow.rocks` |
-| Files | `https://files.yourname.rainbow.rocks` |
-| Documents | `https://docs.yourname.rainbow.rocks` |
-| Media | `https://media.yourname.rainbow.rocks` |
-| Auth | `https://auth.yourname.rainbow.rocks` |
-
-## Step 6: Set Up SSO
+You can recover any of them later with:
 
 ```bash
-# Configure Authentik OAuth providers for all services
-./services/authentik/setup-providers.sh
-
-# Regenerate configs with OAuth credentials
-rainbow config apply
-
-# Restart to pick up new config
-rainbow restart
+security find-generic-password -s rainbow-authentik-bootstrap-password -w
 ```
 
-## Step 7: Email DNS (Automatic)
-
-Email DNS records (MX, SPF, DKIM, DMARC) are created automatically in Cloudflare when Stalwart is installed. To verify or re-run:
+## Step 4: Start the stack
 
 ```bash
-# Check current records
-dig MX yourname.rainbow.rocks
-dig TXT yourname.rainbow.rocks
-
-# Re-run DNS setup if needed
-./services/stalwart/setup-dns.sh
+make setup     # render per-service configs from rainbow.yaml + Keychain
+make start     # bring up all 13 containers
 ```
 
-Test deliverability at [mail-tester.com](https://www.mail-tester.com). If you have issues with outbound email (common on residential connections), you can add an SMTP relay in Stalwart's config without changing anything else.
+This takes a couple of minutes the first time — it pulls images and runs first-run database migrations for Authentik, Immich, and Seafile. Subsequent `make start`s are much faster.
 
-## Step 8: Set Up Backups
+You should see `[immich-setup]` lines at the end indicating that Immich's admin user was created and OAuth was configured (without you clicking through a UI). At this point HTTPS works for every service hostname:
+
+| URL | What |
+|---|---|
+| `https://<prefix>-app.<zone>` | Dashboard |
+| `https://<prefix>-auth.<zone>` | Authentik |
+| `https://<prefix>-photos.<zone>` | Immich |
+| `https://<prefix>-files.<zone>` | Seafile |
+| `https://<prefix>-docs.<zone>` | CryptPad |
+| `https://<prefix>-media.<zone>` | Jellyfin |
+| `https://<prefix>-mail.<zone>` | Stalwart admin |
+
+## Step 5: Wire up SSO (one-time manual step)
+
+Authentik needs an API token before our automation can create OAuth providers. Open `https://<prefix>-auth.<zone>`, log in as `akadmin` (password is in Keychain at `rainbow-authentik-bootstrap-password`), then:
+
+> Profile → Admin interface → Directory → Tokens & App passwords → Create
+> - Identifier: `rainbow-setup`
+> - User: `akadmin`
+> - Intent: `API Token`
+> - Expiring: **off**
+>
+> Save, click the row → **Copy Key**.
+
+Then back in your shell:
 
 ```bash
-# Store backup credentials
-security add-generic-password -s "rainbow-restic-password" -a rainbow -w "$(openssl rand -hex 24)"
-security add-generic-password -s "rainbow-aws-access-key" -a rainbow -w "your-s3-access-key"
-security add-generic-password -s "rainbow-aws-secret-key" -a rainbow -w "your-s3-secret-key"
-
-# Update rainbow.yaml with your backup repository
-# backups.repository: "s3:s3.amazonaws.com/your-bucket-name"
-
-# Test a backup
-rainbow backup
+security add-generic-password -s rainbow-authentik-api-token -a rainbow -w '<paste-key>'
+make setup-providers              # creates Authentik OAuth providers + applications
+make stop && make start           # post-start hooks pick up the new credentials
 ```
 
-## Optional: Minecraft
+After this, `https://<prefix>-photos.<zone>` shows a "Login with Rainbow" button. Click it, complete the Authentik prompt once, and you're in.
+
+## Step 6: First-run setup for individual services
+
+Some apps want to walk you through their own first-time configuration:
+
+- **Authentik** is already set up — `akadmin` user with the bootstrap password
+- **Immich** admin was auto-created (email = `admin.email` from rainbow.yaml; password in Keychain at `rainbow-immich-admin-password`)
+- **Stalwart** prints a recovery code on first start. Get it with `container logs rainbow-stalwart 2>&1 | grep -A1 password`. Visit `https://<prefix>-mail.<zone>/init` to use it.
+- **Jellyfin** has its own setup wizard at `https://<prefix>-media.<zone>`
+- **Seafile** uses email `admin.email` and password at `rainbow-seafile-admin-password`
+- **CryptPad** prints an admin install URL on first start: `container logs rainbow-cryptpad 2>&1 | grep install`
+
+## Day-to-day commands
 
 ```bash
-# Install Paper server
-./services/minecraft/install.sh
-
-# Enable in config
-# Set services.minecraft.enabled: true in rainbow.yaml
-
-# Start
-rainbow start minecraft
+make status                       # what's running
+make stop                         # stop everything
+make start                        # bring it back
+make logs <service>               # follow logs (e.g. make logs immich)
+make backup                       # take a Restic snapshot
+make config                       # regenerate per-service configs after editing rainbow.yaml
 ```
+
+## Where the data lives
+
+- Container persistent state → `~/Library/Application Support/com.apple.container/volumes/rainbow-*/`
+- Stalwart's mailbox → `~/Library/Application Support/Rainbow/stalwart/`
+- Caddy's serving config → regenerated each `make start`, lives under `infrastructure/`
+- Configs you might edit → `config/rainbow.yaml`
 
 ## Troubleshooting
 
-```bash
-# Check service health
-./services/health.sh
+**"Login with Rainbow" button doesn't appear in Immich.** Run `services/immich/setup.sh` directly to see the actual error. Most commonly it means OAuth credentials aren't in Keychain — re-run `make setup-providers`.
 
-# View logs for a specific service
-rainbow logs caddy
-rainbow logs immich-server
+**A service URL returns 502.** Check the service container is up: `make status`. Then check its logs: `make logs <service>`. If the service is healthy but Caddy 502s, the IP-substituted Caddyfile may be stale — `make stop && make start` re-runs the substitution.
 
-# Restart a single service
-rainbow stop immich-server
-rainbow start immich-server
+**TLS handshake fails on a level-2 subdomain.** Cloudflare Universal SSL only covers level-1 subdomains. Make sure your hostname is `<service>.<zone>` (or `<prefix>-<service>.<zone>` on the shared zone), not `<service>.<prefix>.<zone>`. See `memory/project_test_subdomain_tls.md`.
 
-# Full reset (DESTRUCTIVE — deletes all data)
-make reset
-```
-
-## Next Steps
-
-- Install Immich mobile app and configure auto-upload
-- Set up Seafile desktop sync client
-- Configure Jellyfin hardware transcoding (Apple VideoToolbox)
-- Explore the AI App Builder at `https://app.yourname.rainbow.rocks`
+**Authentik says "Request failed. Please try again later."** Caddy isn't trusting `X-Forwarded-Proto: https` from cloudflared. The Caddyfile template includes the fix (`trusted_proxies static private_ranges`); if you've edited it manually, make sure that block is there.

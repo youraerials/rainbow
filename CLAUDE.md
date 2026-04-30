@@ -2,81 +2,88 @@
 
 ## What This Is
 
-Rainbow is a self-hosted digital life platform targeting Mac Mini (M-series Apple Silicon). Users run an installer and get email, photos, files, docs, media, gaming, and AI — all on their home network with zero open ports.
+Rainbow is a self-hosted digital life platform targeting Mac Mini (M-series Apple Silicon). Users run an installer and get email, photos, files, docs, media, and AI — all on their home network with zero open ports.
 
 ## Tech Stack
 
-| Category | Tool | Install | Port |
-|----------|------|---------|------|
-| Photos | Immich | Container | 2283 |
-| Email/Calendar/Contacts | Stalwart | Native (Homebrew) | 8080 (HTTP), 25/587/993 (mail) |
-| Documents | CryptPad | Container | 3000, 3001 (sandbox) |
-| Media | Jellyfin | Native (Homebrew) | 8096 |
-| Files | Seafile | Container | 8082 |
-| Auth/SSO | Authentik | Container | 9000 |
-| Minecraft | Paper (Java) | Native | 25565, 25575 (RCON) |
-| Database | PostgreSQL 17 | Container | 5432 |
-| Cache | Valkey 8 (Redis fork, BSD-3) | Container | 6379 |
-| Reverse Proxy | Caddy | Container | 80, 443 (localhost only) |
-| Tunnel | Cloudflare Tunnel | Container | outbound only |
-| Backups | Restic | Homebrew | N/A |
-| Container Runtime | Apple Container + container-compose | Homebrew | N/A |
+Everything runs in Apple Containers. There are no native services.
+
+| Service | Image | Port |
+|---------|-------|------|
+| Photos | `ghcr.io/immich-app/immich-server:release` | 2283 |
+| Photos ML | `ghcr.io/immich-app/immich-machine-learning:release` | 3003 |
+| Email | `stalwartlabs/stalwart:latest` | 8080 (HTTP), 25/465/587/993 (mail) |
+| Documents | `cryptpad/cryptpad:latest` | 3000, 3001 |
+| Media | `jellyfin/jellyfin:latest` | 8096 |
+| Files | `seafileltd/seafile-mc:latest` | 80 |
+| Auth/SSO | `ghcr.io/goauthentik/server:latest` | 9000 |
+| Postgres (shared) | `ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0` | 5432 |
+| MariaDB (Seafile) | `mariadb:11` | 3306 |
+| Cache | `valkey/valkey:8-alpine` | 6379 |
+| Reverse Proxy | `caddy:2-alpine` | 80 (in-network) |
+| Tunnel | `cloudflare/cloudflared:latest` | outbound only |
 
 ### Container runtime: Apple Container (not Docker)
-Rainbow uses Apple's native container framework (`brew install container`) with `container-compose` for orchestration. Each container runs in its own lightweight VM via Virtualization.framework — better security isolation than Docker. Requires macOS 26 (Tahoe) for container-to-container networking.
 
-The CLI (`cli/rainbow`) has a `compose()` abstraction that falls back to `docker compose` if Apple Container isn't available.
+Rainbow uses Apple's native `container` runtime (`brew install container`). Each container runs in its own lightweight VM via Virtualization.framework. Requires macOS 26 (Tahoe).
 
-### Why native vs container?
-- **Stalwart**: Rust binary, benefits from direct filesystem I/O for mail storage
-- **Jellyfin**: Needs Apple Metal (VideoToolbox) for hardware transcoding — unavailable inside containers on macOS
-- Everything else: Apple Container for isolation and easy management
+We do **not** use `container-compose`. Apple Container 0.11's compose shim is too feature-incomplete (no DNS-by-name between containers, no env interpolation, no condition-based depends_on, etc.). Instead we orchestrate with `services/orchestrator.sh`, which calls `container run` directly per service. See `memory/project_apple_container_quirks.md` and `memory/project_runtime_architecture.md`.
+
+The CLI's `compose()` helper is kept as a fallback for users with Docker installed, but the primary path is the native orchestrator.
 
 ## Project Structure
 
 ```
 rainbow/
 ├── config/                 # Single source of truth: rainbow.yaml + templates
-├── infrastructure/         # Docker Compose (docker-compose.yml is the main file)
-├── services/               # Native service scripts (stalwart/, jellyfin/, minecraft/)
+├── infrastructure/         # Generated runtime configs (gitignored: caddy/, cloudflared/, etc.)
+├── services/               # Orchestrator + per-service post-start hooks
+│   ├── orchestrator.sh     # Bring up containers via `container run` (the real entry point)
+│   ├── authentik/          # OAuth provider setup (post-Authentik-bootstrap)
+│   └── immich/             # Admin signup + OAuth config (post-Immich-start)
 ├── cloudflare/             # TypeScript Workers (Hono + Wrangler)
 ├── mcp/                    # MCP servers (npm workspaces, 8 packages)
 ├── app-builder/            # AI app builder (Express + Claude API)
-├── dashboard/              # React + Vite web UI
+├── dashboard/              # React + Vite web UI (built static bundle served by Caddy)
 ├── backups/                # Restic backup scripts + launchd
 ├── cli/                    # `rainbow` CLI (bash)
 ├── installer/              # macOS .pkg + SwiftUI setup wizard
-├── scripts/                # Dev utilities (generate-config.sh is key)
+├── scripts/                # generate-config.sh, setup-test-tunnel.sh
+├── website/                # Brand site at rainbow.rocks
 └── docs/                   # Architecture and getting-started guides
 ```
 
 ## Key Architecture Decisions
 
-- **One config file**: `config/rainbow.yaml` drives everything. `scripts/generate-config.sh` reads it + macOS Keychain secrets and renders per-service configs from `config/templates/`.
-- **Zero open ports**: All external traffic flows through Cloudflare Tunnel → Caddy → service. No router port forwarding needed.
-- **Secrets in macOS Keychain**: Never stored in plaintext. All `security find-generic-password -s "rainbow-*"` pattern.
-- **Single PostgreSQL**: One shared instance, separate databases (authentik, immich, seafile).
-- **MCP gateway pattern**: Single endpoint aggregates all per-service MCP servers.
-- **Subdomain routing**: Caddy routes by hostname (photos.domain → Immich, mail.domain → Stalwart, etc.)
+- **Hostname layout:** `<prefix>-<service>.<zone>` (e.g. `aubrey-auth.rainbow.rocks`). All level-1 subdomains, all covered by Cloudflare Universal SSL. `domain.prefix` and `domain.zone` in `config/rainbow.yaml`. See `memory/project_hostname_layout.md`.
+- **One config file:** `config/rainbow.yaml` drives everything. `scripts/generate-config.sh` reads it + macOS Keychain secrets and renders per-service configs from `config/templates/`.
+- **Two-phase startup:** Containers start → orchestrator captures their IPs via `container inspect` → renders IP-substituted Caddyfile + cloudflared config + per-app .env files → restarts the containers that need the substitutions. See `memory/project_runtime_architecture.md`.
+- **Zero open ports:** External traffic flows Cloudflare Edge → Tunnel → cloudflared container → Caddy → service. No router port forwarding needed for HTTPS. SMTP/IMAP for mail still need separate ingress.
+- **Caddy trusts private_ranges as proxies:** Required so cloudflared's `X-Forwarded-Proto: https` survives. See `memory/project_caddy_trusted_proxies.md`.
+- **Secrets in macOS Keychain:** Never stored in plaintext. All `security find-generic-password -s "rainbow-*"` pattern. Generated automatically by setup-test-tunnel.sh and post-start hooks.
+- **Shared Postgres uses Immich's image:** pg14 + VectorChord. Other services don't use the vector extension but tolerate pg14 fine. See `memory/project_postgres_image.md`.
+- **Seafile has its own MariaDB:** seafile-mc only speaks MySQL/MariaDB protocol; can't share Postgres. See `memory/project_seafile_quirks.md`.
+- **OIDC SSO via Authentik:** providers/applications created by `services/authentik/setup-providers.sh`; per-app config (e.g. Immich) applied by post-start hooks. See `memory/project_authentik_api.md`.
 
 ## Licensing
 
-- **Rainbow**: Apache 2.0 (see LICENSE and NOTICE)
+- **Rainbow:** Apache 2.0 (see LICENSE and NOTICE)
 - **Bundled deps** (Hono, MCP SDK, Anthropic SDK, React, Vite, Express): all MIT or Apache 2.0
-- **Orchestrated services** (Immich, Stalwart, CryptPad, Jellyfin, Seafile, Paper): AGPL/GPL but run as separate processes — no license infection
+- **Orchestrated services** (Immich, Stalwart, CryptPad, Jellyfin, Seafile): AGPL/GPL but run as separate processes — no license infection
 - We use **Valkey** (BSD-3) instead of Redis 7.4+ (RSALv2) for a fully OSI-pure stack
 
-## Development Commands
+## Commands
 
 ```bash
-make dev-setup     # Generate dev configs with default passwords
-make dev           # Start services in dev mode (ports exposed)
-make start         # Start all services (production)
-make stop          # Stop all services
-make status        # Show service health
-make config        # Regenerate configs from rainbow.yaml
-make clean         # Remove generated configs
-make reset         # DESTRUCTIVE: stop + delete all data
+make install               # brew install container yq jq restic cloudflared
+make setup-test-tunnel     # one-shot: cloudflared login + tunnel + DNS routes
+make setup                 # generate per-service configs from rainbow.yaml + Keychain
+make start                 # bring up the whole stack (orchestrator)
+make stop                  # stop everything
+make status                # show service status
+make logs <service>        # follow logs (e.g. `make logs immich`)
+make backup                # Restic snapshot
+make config                # regenerate configs from rainbow.yaml
 ```
 
 ## Code Conventions
@@ -90,41 +97,14 @@ make reset         # DESTRUCTIVE: stop + delete all data
 - App builder uses `@anthropic-ai/sdk` (Anthropic SDK)
 - TypeScript across all JS projects (strict mode)
 
-## Current State (2026-04-26)
-
-All 8 implementation phases scaffolded — 169 source files.
-
-### What's implemented:
-- Full config system with templates for all 7 services
-- Compose file with 12 services, health checks, 3 networks (Apple Container + container-compose)
-- CLI tool (start/stop/status/logs/config/backup/update)
-- Cloudflare Workers (subdomain manager + health monitor) with tests
-- 8 MCP servers (50 TS files) with real API integrations (JMAP, CalDAV, REST, RCON)
-- React dashboard (6 views, 3 components)
-- AI app builder (orchestrator, Claude client, sandbox, deployer)
-- macOS .pkg installer + SwiftUI setup wizard (5 screens)
-- Restic backup system with Keychain integration
-- Getting-started and architecture docs
-
-### What needs work next:
-- `npm install` and TypeScript compilation verification across all packages
-- Integration testing with real container services running
-- End-to-end flow: installer → config → start → access services
-- Dashboard API backend (currently frontend calls stub endpoints)
-- MCP gateway needs to dynamically load sub-servers (currently stub)
-- Authentik SSO end-to-end verification
-- Email DNS setup automation (MX, SPF, DKIM, DMARC)
-- Cloudflare Worker deployment and KV namespace creation
-- App builder Docker deployment pipeline testing
-
 ## File Quick Reference
 
 | Need to... | Look at... |
 |-------------|-----------|
 | Change service config | `config/rainbow.yaml` |
-| Add a new Docker service | `infrastructure/docker-compose.yml` |
+| Add a new container service | `services/orchestrator.sh` (add a `start_<name>()` function) |
 | Add a new config template | `config/templates/<service>/` + update `scripts/generate-config.sh` |
-| Add a native service | `services/<name>/install.sh` + launchd plist |
+| Add a post-start hook (e.g. configure-via-API) | `services/<name>/setup.sh` + call from `start_minimum` in orchestrator |
 | Add an MCP tool | `mcp/packages/mcp-<service>/src/tools/` |
 | Modify the dashboard | `dashboard/src/views/` or `dashboard/src/components/` |
 | Modify the CLI | `cli/rainbow` (single bash file) |

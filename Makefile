@@ -15,12 +15,12 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: install
-install: ## Install dependencies (Homebrew, Apple Container, native services)
+install: ## Install dependencies (Apple Container, cloudflared, restic, yq, jq)
 	@echo "Installing Rainbow dependencies..."
 	@command -v brew >/dev/null || (echo "Installing Homebrew..." && /bin/bash -c "$$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)")
-	brew install container container-compose yq jq restic cloudflared
+	brew install container yq jq restic cloudflared
 	container system start --enable-kernel-install || true
-	@echo "Dependencies installed. Run 'make setup' next."
+	@echo "Dependencies installed. Run 'make setup-test-tunnel' next."
 
 .PHONY: setup
 setup: ## Run initial setup (generate configs)
@@ -58,8 +58,12 @@ test-quick: ## Run quick tests (skip email delivery, backups)
 # ─── Configuration ───────────────────────────────────────────────
 
 .PHONY: setup-test-tunnel
-setup-test-tunnel: ## Create a Cloudflare Tunnel + DNS routes for testing (test.rainbow.rocks)
+setup-test-tunnel: ## Create a Cloudflare Tunnel + DNS routes for testing (test-*.rainbow.rocks)
 	@bash scripts/setup-test-tunnel.sh
+
+.PHONY: setup-providers
+setup-providers: ## Configure OAuth providers in Authentik (requires API token in Keychain)
+	@bash services/authentik/setup-providers.sh
 
 .PHONY: config
 config: ## Regenerate all configs from rainbow.yaml
