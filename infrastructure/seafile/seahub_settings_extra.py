@@ -6,14 +6,14 @@ ENABLE_OAUTH = True
 OAUTH_ENABLE_INSECURE_TRANSPORT = False
 
 # Authentik OAuth2 configuration
-OAUTH_CLIENT_ID = ''
-OAUTH_CLIENT_SECRET = ''
-OAUTH_REDIRECT_URL = 'https://files.test.rainbow.rocks/oauth/callback/'
+OAUTH_CLIENT_ID = 'SOpAt0B8vq9NLnW7dfNIyWmi5wRQPYJuPv73tAZG'
+OAUTH_CLIENT_SECRET = 'rjXepJvk5NFz0J2eZhGPISXySpmkpGRMyDqWxZMbqJB8q9ovWS9V44x52yuI2MAhUNpMQ2aovhl6wMAOEhAqSzYz6LYLzftbZHY7ReO7aDKbTfTREsGYtNjNdiOIwdhm'
+OAUTH_REDIRECT_URL = 'https://test-files.rainbow.rocks/oauth/callback/'
 
-OAUTH_PROVIDER_DOMAIN = 'auth.test.rainbow.rocks'
-OAUTH_AUTHORIZATION_URL = 'https://auth.test.rainbow.rocks/application/o/authorize/'
-OAUTH_TOKEN_URL = 'https://auth.test.rainbow.rocks/application/o/token/'
-OAUTH_USER_INFO_URL = 'https://auth.test.rainbow.rocks/application/o/userinfo/'
+OAUTH_PROVIDER_DOMAIN = 'test-auth.rainbow.rocks'
+OAUTH_AUTHORIZATION_URL = 'https://test-auth.rainbow.rocks/application/o/authorize/'
+OAUTH_TOKEN_URL = 'https://test-auth.rainbow.rocks/application/o/token/'
+OAUTH_USER_INFO_URL = 'https://test-auth.rainbow.rocks/application/o/userinfo/'
 
 OAUTH_ATTRIBUTE_MAP = {
     'id': (True, 'email'),
@@ -22,7 +22,7 @@ OAUTH_ATTRIBUTE_MAP = {
 }
 
 # File upload limits
-FILE_SERVER_ROOT = 'https://files.test.rainbow.rocks/seafhttp'
+FILE_SERVER_ROOT = 'https://test-files.rainbow.rocks/seafhttp'
 MAX_UPLOAD_FILE_SIZE = 10737418240  # 10GB
 
 # Branding

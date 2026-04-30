@@ -200,6 +200,49 @@ compile_seafile_env() {
     sed -e "s|^DB_HOST=.*|DB_HOST=${mariadb_ip}|" "$src" > "$dest"
 }
 
+start_stalwart() {
+    orch_info "Starting Stalwart mail server..."
+    # Stalwart's data dir holds config (etc/config.toml — generate-config.sh
+    # already wrote it there), the JMAP/IMAP indexes, and message storage.
+    # Bind-mounting from $APPDATA so the user can browse mail data in Finder.
+    local data_dir="$APPDATA/stalwart"
+    mkdir -p "$data_dir/etc"
+    chmod -R u+rwX "$data_dir" 2>/dev/null || true
+    # SMTP/IMAP ports: would need either router port-forwarding or a Cloudflare
+    # TCP tunnel ingress to be reachable from outside. For now we expose only
+    # the admin/web UI on :8080 via Caddy — mail-flow setup is a later task.
+    replace_container rainbow-stalwart \
+        --network frontend \
+        --volume "$data_dir:/opt/stalwart" \
+        docker.io/stalwartlabs/stalwart:latest \
+        >/dev/null
+}
+
+start_jellyfin() {
+    orch_info "Starting Jellyfin..."
+    ensure_volume rainbow-jellyfin-config
+    ensure_volume rainbow-jellyfin-cache
+    # Build optional read-only media mounts from rainbow.yaml. We can't chown
+    # bind-mounts with Apple Container, so the host-side ownership controls
+    # what Jellyfin can read; :ro avoids any need for write access.
+    local media_mounts=()
+    while IFS= read -r path; do
+        [ -z "$path" ] && continue
+        local expanded="${path/#\~/$HOME}"
+        if [ -d "$expanded" ]; then
+            media_mounts+=(--volume "$expanded:/media$(basename "$expanded"):ro")
+        fi
+    done < <(yq eval -o=tsv '.services.jellyfin.media_paths[]' "$CONFIG_FILE" 2>/dev/null || true)
+
+    replace_container rainbow-jellyfin \
+        --network frontend \
+        --mount "type=volume,source=rainbow-jellyfin-config,target=/config" \
+        --mount "type=volume,source=rainbow-jellyfin-cache,target=/cache" \
+        "${media_mounts[@]}" \
+        docker.io/jellyfin/jellyfin:latest \
+        >/dev/null
+}
+
 start_cryptpad() {
     orch_info "Starting CryptPad..."
     ensure_volume rainbow-cryptpad-blob
@@ -322,9 +365,18 @@ start_caddy() {
     # Falls back to the un-substituted Caddyfile if compile hasn't run yet.
     local caddyfile="$INFRA_DIR/caddy/Caddyfile.compiled"
     [ -f "$caddyfile" ] || caddyfile="$INFRA_DIR/caddy/Caddyfile"
+    # Mount the dashboard's static build (if present) so Caddy can serve it.
+    # The Caddyfile's `root /usr/share/caddy/dashboard` block expects this path.
+    local dashboard_mount=()
+    if [ -f "$RAINBOW_ROOT/dashboard/dist/index.html" ]; then
+        dashboard_mount=(--volume "$RAINBOW_ROOT/dashboard/dist:/usr/share/caddy/dashboard:ro")
+    else
+        orch_warn "dashboard/dist not built — build with 'cd dashboard && npm run build'"
+    fi
     replace_container rainbow-caddy \
         --network frontend \
         --volume "$caddyfile:/etc/caddy/Caddyfile:ro" \
+        "${dashboard_mount[@]}" \
         --mount "type=volume,source=rainbow-caddy-data,target=/data" \
         --mount "type=volume,source=rainbow-caddy-config,target=/config" \
         docker.io/library/caddy:2-alpine \
@@ -420,11 +472,23 @@ start_minimum() {
         || { orch_err "seafile has no IP"; return 1; }
     orch_ok "Seafile IP: $seafile_ip (~1-2 min for first-run database init)"
 
+    start_stalwart
+    local stalwart_ip
+    stalwart_ip=$(wait_for_ip rainbow-stalwart) \
+        || { orch_err "stalwart has no IP"; return 1; }
+
+    start_jellyfin
+    local jellyfin_ip
+    jellyfin_ip=$(wait_for_ip rainbow-jellyfin) \
+        || { orch_err "jellyfin has no IP"; return 1; }
+
     compile_caddyfile \
         "authentik-server=$authentik_ip" \
         "immich-server=$immich_ip" \
         "cryptpad=$cryptpad_ip" \
-        "seafile=$seafile_ip"
+        "seafile=$seafile_ip" \
+        "stalwart=$stalwart_ip" \
+        "jellyfin=$jellyfin_ip"
     start_caddy
     local caddy_ip
     caddy_ip=$(wait_for_ip rainbow-caddy) || { orch_err "caddy has no IP"; return 1; }
@@ -432,6 +496,13 @@ start_minimum() {
 
     start_cloudflared "$caddy_ip" || return 1
     orch_ok "cloudflared started."
+
+    # Post-start hooks: configure each app's runtime settings via its own API.
+    # These are idempotent and non-fatal — if Keychain entries aren't yet
+    # populated (e.g. Authentik provider hasn't been created), the hook prints
+    # a hint and exits, but the stack itself stays up.
+    bash "$ORCH_DIR/immich/setup.sh" || \
+        orch_warn "immich post-start setup failed (run services/immich/setup.sh manually)"
 
     local prefix zone host_prefix
     prefix=$(yq eval '.domain.prefix' "$CONFIG_FILE")
@@ -459,6 +530,8 @@ RAINBOW_CONTAINERS=(
     rainbow-immich-ml
     rainbow-cryptpad
     rainbow-seafile
+    rainbow-stalwart
+    rainbow-jellyfin
 )
 
 stop_all() {

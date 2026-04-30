@@ -21,11 +21,13 @@
 }
 
 # ─── Dashboard ───────────────────────────────────────────────────
+# Static React build is mounted at /usr/share/caddy/dashboard by the orchestrator.
+# try_files falls back to index.html for client-side routing.
 http://{{HOST_PREFIX}}app.{{ZONE}} {
-	reverse_proxy localhost:5173
-	handle_errors {
-		respond "Rainbow is alive — dashboard not yet running. Try {{HOST_PREFIX}}auth.{{ZONE}} for Authentik." 200
-	}
+	root * /usr/share/caddy/dashboard
+	encode gzip
+	try_files {path} /index.html
+	file_server
 }
 
 # ─── Auth (Authentik) ────────────────────────────────────────────
@@ -40,7 +42,7 @@ http://{{HOST_PREFIX}}photos.{{ZONE}} {
 
 # ─── Email (Stalwart) ────────────────────────────────────────────
 http://{{HOST_PREFIX}}mail.{{ZONE}} {
-	reverse_proxy localhost:8080
+	reverse_proxy stalwart:8080
 }
 
 # ─── Files (Seafile) ─────────────────────────────────────────────
@@ -59,7 +61,7 @@ http://{{HOST_PREFIX}}docs-sandbox.{{ZONE}} {
 
 # ─── Media (Jellyfin) ────────────────────────────────────────────
 http://{{HOST_PREFIX}}media.{{ZONE}} {
-	reverse_proxy localhost:8096
+	reverse_proxy jellyfin:8096
 }
 
 # ─── MCP API Gateway ─────────────────────────────────────────────

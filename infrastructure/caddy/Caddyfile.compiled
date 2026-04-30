@@ -21,45 +21,47 @@
 }
 
 # ─── Dashboard ───────────────────────────────────────────────────
+# Static React build is mounted at /usr/share/caddy/dashboard by the orchestrator.
+# try_files falls back to index.html for client-side routing.
 http://test-app.rainbow.rocks {
-	reverse_proxy localhost:5173
-	handle_errors {
-		respond "Rainbow is alive — dashboard not yet running. Try test-auth.rainbow.rocks for Authentik." 200
-	}
+	root * /usr/share/caddy/dashboard
+	encode gzip
+	try_files {path} /index.html
+	file_server
 }
 
 # ─── Auth (Authentik) ────────────────────────────────────────────
 http://test-auth.rainbow.rocks {
-	reverse_proxy 192.168.66.84:9000
+	reverse_proxy 192.168.66.109:9000
 }
 
 # ─── Photos (Immich) ─────────────────────────────────────────────
 http://test-photos.rainbow.rocks {
-	reverse_proxy 192.168.66.85:2283
+	reverse_proxy 192.168.66.110:2283
 }
 
 # ─── Email (Stalwart) ────────────────────────────────────────────
 http://test-mail.rainbow.rocks {
-	reverse_proxy localhost:8080
+	reverse_proxy 192.168.66.113:8080
 }
 
 # ─── Files (Seafile) ─────────────────────────────────────────────
 http://test-files.rainbow.rocks {
-	reverse_proxy 192.168.66.87:80
+	reverse_proxy 192.168.66.112:80
 }
 
 # ─── Docs (CryptPad) ─────────────────────────────────────────────
 http://test-docs.rainbow.rocks {
-	reverse_proxy 192.168.66.86:3000
+	reverse_proxy 192.168.66.111:3000
 }
 
 http://test-docs-sandbox.rainbow.rocks {
-	reverse_proxy 192.168.66.86:3001
+	reverse_proxy 192.168.66.111:3001
 }
 
 # ─── Media (Jellyfin) ────────────────────────────────────────────
 http://test-media.rainbow.rocks {
-	reverse_proxy localhost:8096
+	reverse_proxy 192.168.66.114:8096
 }
 
 # ─── MCP API Gateway ─────────────────────────────────────────────
