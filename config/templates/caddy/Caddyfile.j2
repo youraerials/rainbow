@@ -20,14 +20,13 @@
 	}
 }
 
-# ─── Dashboard ───────────────────────────────────────────────────
-# Static React build is mounted at /usr/share/caddy/dashboard by the orchestrator.
-# try_files falls back to index.html for client-side routing.
+# ─── Web tier (dashboard SPA + REST + MCP) ───────────────────────
+# The unified Node web container serves dashboard, /api/*, /mcp, and
+# /apps/<name>/* (the latter for AI-generated user apps). Caddy reverse-proxies
+# everything; the web tier handles routing internally.
 http://{{HOST_PREFIX}}app.{{ZONE}} {
-	root * /usr/share/caddy/dashboard
 	encode gzip
-	try_files {path} /index.html
-	file_server
+	reverse_proxy web:3000
 }
 
 # ─── Auth (Authentik) ────────────────────────────────────────────

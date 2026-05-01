@@ -218,6 +218,24 @@ start_stalwart() {
         >/dev/null
 }
 
+start_web() {
+    orch_info "Starting Rainbow web tier..."
+    # The web container hosts dashboard SPA + REST API + MCP gateway + (later)
+    # user-generated apps. dashboard/dist is bind-mounted so UI iteration
+    # doesn't require rebuilding the image. apps/ persists user-generated apps.
+    local apps_dir="$APPDATA/web-apps"
+    mkdir -p "$apps_dir"
+    if [ ! -f "$RAINBOW_ROOT/dashboard/dist/index.html" ]; then
+        orch_warn "dashboard/dist not built — UI will 404 (cd dashboard && npm run build)"
+    fi
+    replace_container rainbow-web \
+        --network frontend \
+        --volume "$RAINBOW_ROOT/dashboard/dist:/usr/share/web/dashboard:ro" \
+        --volume "$apps_dir:/var/lib/rainbow/apps" \
+        rainbow-web:latest \
+        >/dev/null
+}
+
 start_jellyfin() {
     orch_info "Starting Jellyfin..."
     ensure_volume rainbow-jellyfin-config
@@ -365,18 +383,11 @@ start_caddy() {
     # Falls back to the un-substituted Caddyfile if compile hasn't run yet.
     local caddyfile="$INFRA_DIR/caddy/Caddyfile.compiled"
     [ -f "$caddyfile" ] || caddyfile="$INFRA_DIR/caddy/Caddyfile"
-    # Mount the dashboard's static build (if present) so Caddy can serve it.
-    # The Caddyfile's `root /usr/share/caddy/dashboard` block expects this path.
-    local dashboard_mount=()
-    if [ -f "$RAINBOW_ROOT/dashboard/dist/index.html" ]; then
-        dashboard_mount=(--volume "$RAINBOW_ROOT/dashboard/dist:/usr/share/caddy/dashboard:ro")
-    else
-        orch_warn "dashboard/dist not built — build with 'cd dashboard && npm run build'"
-    fi
+    # The dashboard SPA is now served by the rainbow-web container, not by
+    # Caddy directly — Caddy just reverse_proxies <prefix>-app.<zone> → web:3000.
     replace_container rainbow-caddy \
         --network frontend \
         --volume "$caddyfile:/etc/caddy/Caddyfile:ro" \
-        "${dashboard_mount[@]}" \
         --mount "type=volume,source=rainbow-caddy-data,target=/data" \
         --mount "type=volume,source=rainbow-caddy-config,target=/config" \
         docker.io/library/caddy:2-alpine \
@@ -482,13 +493,19 @@ start_minimum() {
     jellyfin_ip=$(wait_for_ip rainbow-jellyfin) \
         || { orch_err "jellyfin has no IP"; return 1; }
 
+    start_web
+    local web_ip
+    web_ip=$(wait_for_ip rainbow-web) \
+        || { orch_err "web has no IP"; return 1; }
+
     compile_caddyfile \
         "authentik-server=$authentik_ip" \
         "immich-server=$immich_ip" \
         "cryptpad=$cryptpad_ip" \
         "seafile=$seafile_ip" \
         "stalwart=$stalwart_ip" \
-        "jellyfin=$jellyfin_ip"
+        "jellyfin=$jellyfin_ip" \
+        "web=$web_ip"
     start_caddy
     local caddy_ip
     caddy_ip=$(wait_for_ip rainbow-caddy) || { orch_err "caddy has no IP"; return 1; }
@@ -521,6 +538,7 @@ start_minimum() {
 RAINBOW_CONTAINERS=(
     rainbow-cloudflared
     rainbow-caddy
+    rainbow-web
     rainbow-authentik-server
     rainbow-authentik-worker
     rainbow-postgres
