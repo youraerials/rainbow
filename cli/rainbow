@@ -172,8 +172,10 @@ cmd_status() {
         [ "$prefix" = "null" ] && prefix=""
         [ -n "$prefix" ] && host_prefix="${prefix}-" || host_prefix=""
         if [ -n "$zone" ] && [ "$zone" != "null" ]; then
+            local web_host
+            if [ -n "$prefix" ]; then web_host="${prefix}.${zone}"; else web_host="$zone"; fi
             echo -e "${BOLD}Access URLs:${NC}"
-            echo "  Dashboard:  https://${host_prefix}app.${zone}"
+            echo "  Dashboard:  https://${web_host}"
             echo "  Auth:       https://${host_prefix}auth.${zone}"
             echo "  Photos:     https://${host_prefix}photos.${zone}"
             echo "  Email:      https://${host_prefix}mail.${zone}"

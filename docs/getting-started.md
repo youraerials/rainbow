@@ -91,7 +91,7 @@ You should see `[immich-setup]` lines at the end indicating that Immich's admin 
 
 | URL | What |
 |---|---|
-| `https://<prefix>-app.<zone>` | Dashboard |
+| `https://<prefix>.<zone>` | Dashboard / web tier |
 | `https://<prefix>-auth.<zone>` | Authentik |
 | `https://<prefix>-photos.<zone>` | Immich |
 | `https://<prefix>-files.<zone>` | Seafile |

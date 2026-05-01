@@ -55,11 +55,12 @@ fi
 
 if [ -n "$PREFIX" ]; then
     HOST_PREFIX="${PREFIX}-"
-    PRIMARY_DOMAIN="${PREFIX}-app.${ZONE}"
+    WEB_HOST="${PREFIX}.${ZONE}"
 else
     HOST_PREFIX=""
-    PRIMARY_DOMAIN="app.${ZONE}"
+    WEB_HOST="${ZONE}"
 fi
+PRIMARY_DOMAIN="$WEB_HOST"
 
 # ─── Colors ──────────────────────────────────────────────────────
 GREEN='\033[0;32m'
@@ -132,7 +133,7 @@ ok "Tunnel token stored in Keychain (rainbow-cloudflare-tunnel-token)"
 
 # ─── Step 4: Create DNS routes for each service subdomain ────────
 SERVICE_HOSTS=(
-    "${HOST_PREFIX}app.${ZONE}"
+    "${WEB_HOST}"
     "${HOST_PREFIX}auth.${ZONE}"
     "${HOST_PREFIX}photos.${ZONE}"
     "${HOST_PREFIX}mail.${ZONE}"
@@ -140,7 +141,6 @@ SERVICE_HOSTS=(
     "${HOST_PREFIX}docs.${ZONE}"
     "${HOST_PREFIX}docs-sandbox.${ZONE}"
     "${HOST_PREFIX}media.${ZONE}"
-    "${HOST_PREFIX}api.${ZONE}"
     "${HOST_PREFIX}mc.${ZONE}"
 )
 
@@ -165,7 +165,8 @@ ok "rainbow.yaml updated"
 echo ""
 ok "Test tunnel ready."
 echo ""
-echo "  Hostnames:  ${HOST_PREFIX}app.${ZONE}, ${HOST_PREFIX}auth.${ZONE}, ${HOST_PREFIX}photos.${ZONE}, ..."
+echo "  Dashboard:  ${WEB_HOST}"
+echo "  Services:   ${HOST_PREFIX}auth.${ZONE}, ${HOST_PREFIX}photos.${ZONE}, ..."
 echo "  Tunnel:     $TUNNEL_NAME ($TUNNEL_ID)"
 echo "  Token:      stored in Keychain"
 echo ""

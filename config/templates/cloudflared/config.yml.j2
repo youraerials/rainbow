@@ -8,7 +8,7 @@
 tunnel: {{CLOUDFLARE_TUNNEL_ID}}
 
 ingress:
-  - hostname: "{{HOST_PREFIX}}app.{{ZONE}}"
+  - hostname: "{{WEB_HOST}}"
     service: http://caddy:80
   - hostname: "{{HOST_PREFIX}}auth.{{ZONE}}"
     service: http://caddy:80

@@ -3,34 +3,70 @@
  *
  * Single Express app serving:
  *   - /                → dashboard SPA (static, mounted at runtime from dashboard/dist)
- *   - /api/...         → admin REST endpoints (status, services, config)
- *   - /mcp             → MCP HTTP transport (aggregated tools across all services)
+ *   - /api/auth/*      → OIDC login flow (public)
+ *   - /api/...         → admin REST endpoints (auth-required)
+ *   - /mcp             → MCP HTTP transport (auth-required)
  *   - /apps/<name>/*   → user-generated apps loaded from a persistent volume (future)
  *
  * Runs in the rainbow-web container; reachable via Caddy at <prefix>-app.<zone>.
  */
 
 import express from "express";
+import cookieParser from "cookie-parser";
 import path from "node:path";
 
 import { apiRouter } from "./api/index.js";
 import { attachMcp } from "./mcp/server.js";
+import { configureOidc } from "./auth/oidc.js";
+import { requireAuth } from "./auth/middleware.js";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const DASHBOARD_DIR = process.env.RAINBOW_DASHBOARD_DIR ?? "/usr/share/web/dashboard";
 const APPS_DIR = process.env.RAINBOW_APPS_DIR ?? "/var/lib/rainbow/apps";
 
+// OIDC config from env, set up by the orchestrator from Keychain.
+const HOST_PREFIX = process.env.RAINBOW_HOST_PREFIX ?? "";
+const ZONE = process.env.RAINBOW_ZONE ?? "";
+const WEB_HOST =
+    process.env.RAINBOW_WEB_HOST ??
+    (HOST_PREFIX ? `${HOST_PREFIX.replace(/-$/, "")}.${ZONE}` : ZONE);
+const CLIENT_ID = process.env.RAINBOW_OAUTH_CLIENT_ID ?? "";
+const CLIENT_SECRET = process.env.RAINBOW_OAUTH_CLIENT_SECRET ?? "";
+const ISSUER =
+    process.env.RAINBOW_OAUTH_ISSUER ??
+    (ZONE ? `https://${HOST_PREFIX}auth.${ZONE}/application/o/web/` : "");
+const REDIRECT_URI =
+    process.env.RAINBOW_OAUTH_REDIRECT_URI ??
+    (WEB_HOST ? `https://${WEB_HOST}/api/auth/callback` : "");
+
+if (!CLIENT_ID || !CLIENT_SECRET || !ISSUER || !REDIRECT_URI) {
+    console.error("[rainbow-web] FATAL: OIDC env not fully populated.");
+    console.error("  RAINBOW_OAUTH_CLIENT_ID / _CLIENT_SECRET must be set,");
+    console.error("  along with RAINBOW_HOST_PREFIX + RAINBOW_ZONE (or RAINBOW_OAUTH_ISSUER explicitly).");
+    process.exit(1);
+}
+
+await configureOidc({
+    issuer: ISSUER,
+    clientId: CLIENT_ID,
+    clientSecret: CLIENT_SECRET,
+    redirectUri: REDIRECT_URI,
+});
+
 const app = express();
+app.set("trust proxy", true); // we're behind Caddy + Cloudflare Tunnel
+app.use(cookieParser());
 app.use(express.json({ limit: "1mb" }));
 
-// REST + MCP first so they don't collide with the SPA fallback.
+// REST first (auth/* is public; rest require auth via the router itself).
 app.use("/api", apiRouter);
-attachMcp(app, "/mcp");
 
-// Static dashboard, with SPA fallback for client-side routes.
-// Express 5 dropped support for bare-`*` paths in path-to-regexp; we use a
-// general middleware after express.static so anything not handled by the
-// static layer falls through to index.html.
+// MCP requires auth.
+attachMcp(app, "/mcp", requireAuth);
+
+// Static dashboard, with SPA fallback for client-side routes. Express 5
+// dropped support for bare-`*` route patterns, so we use a path-less
+// middleware after express.static.
 app.use(express.static(DASHBOARD_DIR, { index: "index.html" }));
 app.use((req, res, next) => {
     if (req.method !== "GET") return next();

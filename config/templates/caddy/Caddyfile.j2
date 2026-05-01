@@ -21,10 +21,10 @@
 }
 
 # ─── Web tier (dashboard SPA + REST + MCP) ───────────────────────
-# The unified Node web container serves dashboard, /api/*, /mcp, and
-# /apps/<name>/* (the latter for AI-generated user apps). Caddy reverse-proxies
-# everything; the web tier handles routing internally.
-http://{{HOST_PREFIX}}app.{{ZONE}} {
+# Bound to the bare prefix (e.g. test.rainbow.rocks) or zone apex for BYO
+# domain. Hosts dashboard, /api/*, /mcp, and /apps/<name>/*. Caddy
+# reverse-proxies everything; the web tier handles routing internally.
+http://{{WEB_HOST}} {
 	encode gzip
 	reverse_proxy web:3000
 }

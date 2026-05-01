@@ -15,13 +15,10 @@
 | AI App Builder | Claude API |
 | Encrypted Backups | [Restic](https://restic.net) |
 
-Routed at `<prefix>-<service>.<zone>` (level-1 subdomains, all covered by Cloudflare Universal SSL). Examples:
+**Naming layout** (level-1 subdomains, all covered by Cloudflare Universal SSL):
 
-- `aubrey-photos.rainbow.rocks`
-- `aubrey-auth.rainbow.rocks`
-- `aubrey-files.rainbow.rocks`
-
-Or bring your own domain: `auth.example.com`, `photos.example.com`, etc.
+- Dashboard / web tier — `<prefix>.<zone>` (e.g. `aubrey.rainbow.rocks`) or just `<zone>` for BYO domain (e.g. `example.com`)
+- Each service — `<prefix>-<service>.<zone>` (e.g. `aubrey-auth.rainbow.rocks`, `aubrey-photos.rainbow.rocks`) or `<service>.<zone>` for BYO (e.g. `auth.example.com`)
 
 ## Status
 
@@ -76,7 +73,7 @@ make stop && make start    # post-start hooks pick up the new credentials
 make status
 ```
 
-After step 7, opening `https://<prefix>-photos.<zone>` shows a "Login with Rainbow" button and full SSO works.
+After step 7, opening `https://<prefix>.<zone>` lands on the dashboard, and `https://<prefix>-photos.<zone>` shows a "Login with Rainbow" button for full SSO.
 
 ## What works / What doesn't
 

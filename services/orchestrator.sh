@@ -228,8 +228,25 @@ start_web() {
     if [ ! -f "$RAINBOW_ROOT/dashboard/dist/index.html" ]; then
         orch_warn "dashboard/dist not built — UI will 404 (cd dashboard && npm run build)"
     fi
+
+    # OIDC config: client_id/secret are minted by setup-providers.sh into
+    # Keychain. Without them the web tier exits at startup, so this is a hard
+    # dependency on having run setup-providers first.
+    local web_client_id web_client_secret
+    web_client_id=$(security find-generic-password -s rainbow-oauth-web-client-id -w 2>/dev/null || echo "")
+    web_client_secret=$(security find-generic-password -s rainbow-oauth-web-client-secret -w 2>/dev/null || echo "")
+    if [ -z "$web_client_id" ] || [ -z "$web_client_secret" ]; then
+        orch_warn "OIDC credentials missing for web tier — run services/authentik/setup-providers.sh"
+        orch_warn "rainbow-web will fail to start until that's done."
+    fi
+
     replace_container rainbow-web \
         --network frontend \
+        --env "RAINBOW_HOST_PREFIX=${RAINBOW_HOST_PREFIX:-}" \
+        --env "RAINBOW_ZONE=${RAINBOW_ZONE:-}" \
+        --env "RAINBOW_WEB_HOST=${RAINBOW_WEB_HOST:-}" \
+        --env "RAINBOW_OAUTH_CLIENT_ID=${web_client_id}" \
+        --env "RAINBOW_OAUTH_CLIENT_SECRET=${web_client_secret}" \
         --volume "$RAINBOW_ROOT/dashboard/dist:/usr/share/web/dashboard:ro" \
         --volume "$apps_dir:/var/lib/rainbow/apps" \
         rainbow-web:latest \
@@ -521,18 +538,26 @@ start_minimum() {
     bash "$ORCH_DIR/immich/setup.sh" || \
         orch_warn "immich post-start setup failed (run services/immich/setup.sh manually)"
 
-    local prefix zone host_prefix
+    local prefix zone host_prefix web_host
     prefix=$(yq eval '.domain.prefix' "$CONFIG_FILE")
     zone=$(yq eval '.domain.zone' "$CONFIG_FILE")
     [ "$prefix" = "null" ] && prefix=""
-    [ -n "$prefix" ] && host_prefix="${prefix}-" || host_prefix=""
+    if [ -n "$prefix" ]; then
+        host_prefix="${prefix}-"
+        web_host="${prefix}.${zone}"
+    else
+        host_prefix=""
+        web_host="$zone"
+    fi
     echo ""
     echo "  Routes through tunnel (HTTPS via Cloudflare's Universal SSL):"
-    echo "    curl https://${host_prefix}app.${zone}    # caddy welcome page"
-    echo "    curl https://${host_prefix}auth.${zone}   # authentik (after ~1 min boot)"
-    echo ""
-    echo "  Other service routes (photos, mail, files, ...) will 502 until those"
-    echo "  containers exist."
+    echo "    https://${web_host}                # dashboard (Rainbow web tier)"
+    echo "    https://${host_prefix}auth.${zone}   # Authentik"
+    echo "    https://${host_prefix}photos.${zone} # Immich"
+    echo "    https://${host_prefix}files.${zone}  # Seafile"
+    echo "    https://${host_prefix}docs.${zone}   # CryptPad"
+    echo "    https://${host_prefix}media.${zone}  # Jellyfin"
+    echo "    https://${host_prefix}mail.${zone}   # Stalwart"
 }
 
 RAINBOW_CONTAINERS=(

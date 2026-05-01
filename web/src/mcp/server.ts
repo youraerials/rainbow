@@ -9,9 +9,10 @@
  *   workspace packages and register them all here.
  */
 
-import { Express, Request, Response } from "express";
+import { Express, Request, RequestHandler, Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { registerSystemTools } from "./tools/system/index.js";
 
 function buildServer(): McpServer {
     const server = new McpServer({
@@ -19,7 +20,7 @@ function buildServer(): McpServer {
         version: "0.1.0",
     });
 
-    // Stub tool to verify HTTP transport wiring.
+    // Connectivity probe.
     server.tool(
         "rainbow.ping",
         "Verify the MCP gateway is reachable.",
@@ -34,16 +35,25 @@ function buildServer(): McpServer {
         }),
     );
 
+    // System tools (health, service catalog). Each register*Tools function
+    // adds its own namespace of tools to the shared server; Phase 3 follows
+    // the same pattern for mcp-photos, mcp-files, etc.
+    registerSystemTools(server);
+
     return server;
 }
 
-export function attachMcp(app: Express, mountPath: string): void {
+export function attachMcp(
+    app: Express,
+    mountPath: string,
+    auth: RequestHandler,
+): void {
     // Stateless HTTP transport: each request creates a fresh transport
     // bound to the same shared McpServer. Good enough for Phase 1; we'll
     // revisit if we need session continuity for streaming responses.
     const server = buildServer();
 
-    app.post(mountPath, async (req: Request, res: Response) => {
+    app.post(mountPath, auth, async (req: Request, res: Response) => {
         try {
             const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: undefined, // stateless

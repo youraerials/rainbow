@@ -31,7 +31,11 @@ PREFIX=$(yq eval '.domain.prefix // ""' "$CONFIG_FILE")
 ZONE=$(yq eval '.domain.zone' "$CONFIG_FILE")
 [ "$PREFIX" = "null" ] && PREFIX=""
 HOST_PREFIX=""
-[ -n "$PREFIX" ] && HOST_PREFIX="${PREFIX}-"
+WEB_HOST="$ZONE"
+if [ -n "$PREFIX" ]; then
+    HOST_PREFIX="${PREFIX}-"
+    WEB_HOST="${PREFIX}.${ZONE}"
+fi
 
 AUTH_HOST="${HOST_PREFIX}auth.${ZONE}"
 AUTHENTIK_URL="https://${AUTH_HOST}"
@@ -221,11 +225,13 @@ configure_provider() {
     client_id=$(echo "$resp" | jq -r '.client_id')
     client_secret=$(echo "$resp" | jq -r '.client_secret')
 
-    # Create application if missing
+    # Create application if missing.
+    # Authentik's /applications/?slug=foo filter is ignored — server returns
+    # the full list — so we have to filter client-side.
     local app_pk
     app_pk=$(curl -sS -m 10 -H "$AUTH_HEADER" \
-        "$AUTHENTIK_URL/api/v3/core/applications/?slug=$slug" \
-        | jq -r '.results[0].pk // empty')
+        "$AUTHENTIK_URL/api/v3/core/applications/" \
+        | jq -r --arg slug "$slug" '.results[] | select(.slug == $slug) | .pk' | head -n1)
     if [ -z "$app_pk" ]; then
         echo "  Creating application..."
         curl -sS -m 10 -H "$AUTH_HEADER" -H "Content-Type: application/json" \
@@ -265,6 +271,13 @@ https://${HOST_PREFIX}photos.${ZONE}/user-settings"
 # Files (Seafile): standard Seahub OAuth callback path.
 configure_provider "files" "Files" \
     "https://${HOST_PREFIX}files.${ZONE}/oauth/callback/"
+
+# Web (rainbow-web): the unified Node web tier needs its own OIDC client to
+# authenticate dashboard users and protect /api + /mcp. Server-side code-flow,
+# so the redirect lands on /api/auth/callback (not a SPA route).
+# Bound to the bare web host (no -app suffix).
+configure_provider "web" "Web" \
+    "https://${WEB_HOST}/api/auth/callback"
 
 echo ""
 echo "Done. Next steps:"
