@@ -64,6 +64,18 @@ app.use("/api", apiRouter);
 // MCP requires auth.
 attachMcp(app, "/mcp", requireAuth);
 
+// Lock down the dashboard: an unauthenticated visitor sees nothing and is
+// redirected to the login flow. Rainbow is single-user private infrastructure;
+// there's no reason for anonymous traffic to see even the React bundle.
+// /api/* handles its own auth (login routes are public); /mcp 401s rather than
+// redirecting (it's a JSON API, not a browser route).
+app.use((req, res, next) => {
+    if (req.path.startsWith("/api/") || req.path.startsWith("/mcp")) return next();
+    const cookies = (req as typeof req & { cookies?: Record<string, string> }).cookies;
+    if (cookies?.rainbow_session) return next();
+    res.redirect("/api/auth/login");
+});
+
 // Static dashboard, with SPA fallback for client-side routes. Express 5
 // dropped support for bare-`*` route patterns, so we use a path-less
 // middleware after express.static.

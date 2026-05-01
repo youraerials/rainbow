@@ -13,6 +13,7 @@ import { Express, Request, RequestHandler, Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerSystemTools } from "./tools/system/index.js";
+import { registerPhotoTools } from "./tools/photos/index.js";
 
 function buildServer(): McpServer {
     const server = new McpServer({
@@ -36,9 +37,11 @@ function buildServer(): McpServer {
     );
 
     // System tools (health, service catalog). Each register*Tools function
-    // adds its own namespace of tools to the shared server; Phase 3 follows
-    // the same pattern for mcp-photos, mcp-files, etc.
+    // adds its own namespace of tools to the shared server.
     registerSystemTools(server);
+
+    // Photos (Immich). Disabled at boot if IMMICH_API_KEY isn't set.
+    registerPhotoTools(server);
 
     return server;
 }

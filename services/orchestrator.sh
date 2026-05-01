@@ -240,6 +240,12 @@ start_web() {
         orch_warn "rainbow-web will fail to start until that's done."
     fi
 
+    # Per-service API keys for the MCP tools. Provisioned by each service's
+    # post-start setup hook (e.g. immich/setup.sh creates the Immich key).
+    # Missing keys aren't fatal — the corresponding tools will return errors.
+    local immich_api_key
+    immich_api_key=$(security find-generic-password -s rainbow-immich-api-key -w 2>/dev/null || echo "")
+
     replace_container rainbow-web \
         --network frontend \
         --env "RAINBOW_HOST_PREFIX=${RAINBOW_HOST_PREFIX:-}" \
@@ -247,6 +253,7 @@ start_web() {
         --env "RAINBOW_WEB_HOST=${RAINBOW_WEB_HOST:-}" \
         --env "RAINBOW_OAUTH_CLIENT_ID=${web_client_id}" \
         --env "RAINBOW_OAUTH_CLIENT_SECRET=${web_client_secret}" \
+        --env "IMMICH_API_KEY=${immich_api_key}" \
         --volume "$RAINBOW_ROOT/dashboard/dist:/usr/share/web/dashboard:ro" \
         --volume "$apps_dir:/var/lib/rainbow/apps" \
         rainbow-web:latest \
@@ -531,10 +538,11 @@ start_minimum() {
     start_cloudflared "$caddy_ip" || return 1
     orch_ok "cloudflared started."
 
-    # Post-start hooks: configure each app's runtime settings via its own API.
-    # These are idempotent and non-fatal — if Keychain entries aren't yet
-    # populated (e.g. Authentik provider hasn't been created), the hook prints
-    # a hint and exits, but the stack itself stays up.
+    # Post-start hooks: configure each app's runtime settings via its own API
+    # or via container exec. Idempotent and non-fatal — if a hook fails, the
+    # stack itself stays up; the user can re-run the script directly.
+    bash "$ORCH_DIR/seafile/setup.sh" || \
+        orch_warn "seafile post-start setup failed (run services/seafile/setup.sh manually)"
     bash "$ORCH_DIR/immich/setup.sh" || \
         orch_warn "immich post-start setup failed (run services/immich/setup.sh manually)"
 

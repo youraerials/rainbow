@@ -6,6 +6,7 @@
 import { Router } from "express";
 import { requireAuth } from "../auth/middleware.js";
 import { authRouter } from "./auth.js";
+import { statusRouter } from "./status.js";
 
 export const apiRouter = Router();
 
@@ -29,3 +30,6 @@ apiRouter.get("/health", (req, res) => {
             : null,
     });
 });
+
+// /api/status, /api/services — service catalog + live health.
+apiRouter.use(statusRouter);

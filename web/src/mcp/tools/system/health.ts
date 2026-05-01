@@ -4,50 +4,7 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SERVICES, publicUrl } from "./hosts.js";
-
-interface ServiceHealth {
-    name: string;
-    slug: string;
-    url: string;
-    healthy: boolean;
-    status?: number;
-    latencyMs: number;
-    error?: string;
-}
-
-async function checkOne(
-    name: string,
-    slug: string,
-    healthPath: string,
-): Promise<ServiceHealth> {
-    const url = publicUrl(slug, healthPath);
-    const start = Date.now();
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 5000);
-    try {
-        const resp = await fetch(url, { method: "GET", signal: controller.signal });
-        return {
-            name,
-            slug,
-            url,
-            healthy: resp.ok,
-            status: resp.status,
-            latencyMs: Date.now() - start,
-        };
-    } catch (err) {
-        return {
-            name,
-            slug,
-            url,
-            healthy: false,
-            latencyMs: Date.now() - start,
-            error: err instanceof Error ? err.message : String(err),
-        };
-    } finally {
-        clearTimeout(t);
-    }
-}
+import { checkAll } from "../../../services/health.js";
 
 export function registerHealthCheck(server: McpServer): void {
     server.tool(
@@ -55,9 +12,7 @@ export function registerHealthCheck(server: McpServer): void {
         "Check the reachability and latency of every Rainbow service via its public URL.",
         {},
         async () => {
-            const results = await Promise.all(
-                SERVICES.map((s) => checkOne(s.name, s.slug, s.healthPath)),
-            );
+            const results = await checkAll();
             const summary = {
                 checked: results.length,
                 healthy: results.filter((r) => r.healthy).length,

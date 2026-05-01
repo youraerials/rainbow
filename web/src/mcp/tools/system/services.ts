@@ -6,7 +6,7 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SERVICES, publicHost, publicUrl } from "./hosts.js";
+import { SERVICES, publicHost, publicUrl } from "../../../services/registry.js";
 
 export function registerListServices(server: McpServer): void {
     server.tool(
@@ -17,6 +17,8 @@ export function registerListServices(server: McpServer): void {
             const services = SERVICES.map((s) => ({
                 slug: s.slug,
                 name: s.name,
+                displayName: s.displayName,
+                description: s.description,
                 hostname: publicHost(s.slug),
                 url: publicUrl(s.slug),
             }));

@@ -134,3 +134,32 @@ else
 fi
 
 log "Done. The 'Login with Rainbow' button should appear at https://${HOST_PREFIX}photos.${ZONE}"
+
+# ─── Provision an API key for the rainbow-web MCP tools ──────────
+# Stored in Keychain as `rainbow-immich-api-key`. The web tier passes it
+# to mcp-photos tools as the `x-api-key` header. We always create a fresh
+# key on each run rather than re-using because Immich's API doesn't expose
+# the secret of an existing key (only on creation), and we'd rather rotate
+# than carry stale state.
+log "Provisioning Immich API key for rainbow-web MCP tools..."
+
+# Delete any existing "rainbow-web" keys to keep things tidy.
+EXISTING=$(curl -sS -m 10 -H "$AUTH" "$IMMICH/api-keys" \
+    | jq -r '.[] | select(.name == "rainbow-web") | .id // empty')
+for kid in $EXISTING; do
+    curl -sS -m 10 -X DELETE -H "$AUTH" "$IMMICH/api-keys/$kid" >/dev/null
+done
+
+# Create a new key. `permissions: ["all"]` is the Immich shortcut for
+# every available scope; the tools will use a small subset.
+CREATED=$(curl -sS -m 10 -X POST "$IMMICH/api-keys" \
+    -H "$AUTH" -H "Content-Type: application/json" \
+    -d '{"name":"rainbow-web","permissions":["all"]}')
+SECRET=$(echo "$CREATED" | jq -r '.secret // empty')
+if [ -z "$SECRET" ] || [ "$SECRET" = "null" ]; then
+    err "Failed to mint Immich API key: $CREATED"
+    exit 1
+fi
+
+security add-generic-password -s rainbow-immich-api-key -a rainbow -w "$SECRET" -U
+log "  API key stored: rainbow-immich-api-key"
