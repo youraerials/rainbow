@@ -34,6 +34,7 @@ const HOST = process.env.RAINBOW_CONTROL_HOST || "::";
 const RAINBOW_ROOT =
     process.env.RAINBOW_ROOT || path.resolve(__dirname, "..", "..");
 const REFRESH_CADDY = path.join(RAINBOW_ROOT, "services", "refresh-caddy.sh");
+const ORCHESTRATOR = path.join(RAINBOW_ROOT, "services", "orchestrator.sh");
 
 const ALLOWED_NAME = /^rainbow-[a-z0-9-]+$/;
 const VALID_ACTIONS = new Set(["start", "stop", "restart"]);
@@ -112,6 +113,24 @@ function refreshCaddy() {
     });
 }
 
+// Recreate a rainbow-* container with fresh env via orchestrator.sh. This
+// re-reads Keychain entries every time, so secret rotation flows through
+// without the user knowing about Apple Container's stop/start env-caching
+// behavior. Caller still drives refreshCaddy() afterward to fix routing.
+function recreateViaOrchestrator(name) {
+    return new Promise((resolve) => {
+        const child = spawn("/bin/bash", [ORCHESTRATOR, "restart-container", name], {
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (d) => (stdout += d.toString()));
+        child.stderr.on("data", (d) => (stderr += d.toString()));
+        child.on("error", (err) => resolve({ code: -1, stdout: "", stderr: String(err) }));
+        child.on("close", (code) => resolve({ code: code ?? -1, stdout, stderr }));
+    });
+}
+
 async function handleAction(action, name) {
     if (!VALID_ACTIONS.has(action)) {
         return { status: 400, body: { error: `unknown action: ${action}` } };
@@ -123,16 +142,18 @@ async function handleAction(action, name) {
         };
     }
     if (action === "restart") {
-        const stopRes = await runContainer(["stop", name]);
-        // ignore stop errors (container may already be stopped); proceed to start
-        const startRes = await runContainer(["start", name]);
+        // Defer to orchestrator.sh: it re-reads Keychain + the .env file and
+        // recreates the container with fresh env. A plain `container start`
+        // would reuse the env baked in at original `run` time, so secret
+        // rotation wouldn't take effect until next `make start`.
+        const recreate = await recreateViaOrchestrator(name);
         let caddyRefresh = null;
-        if (startRes.code === 0) {
+        if (recreate.code === 0) {
             caddyRefresh = await refreshCaddy();
         }
         return {
-            status: startRes.code === 0 ? 200 : 500,
-            body: { action, name, stop: stopRes, start: startRes, caddyRefresh },
+            status: recreate.code === 0 ? 200 : 500,
+            body: { action, name, recreate, caddyRefresh },
         };
     }
     const result = await runContainer([action, name]);

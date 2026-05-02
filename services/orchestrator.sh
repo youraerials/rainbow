@@ -639,6 +639,58 @@ RAINBOW_CONTAINERS=(
     rainbow-jellyfin
 )
 
+# Recreate one container with fresh env from the current Keychain + .env.
+# Used by the host control daemon so that "Restart" from the dashboard or API
+# actually picks up newly-rotated secrets — Apple Container's `start` reuses
+# the env vars baked in at `run` time, so a plain stop/start can't refresh.
+# The dispatch maps each rainbow-* container name to the start_* function that
+# knows how to assemble its env, including any IP-dependent values.
+restart_one() {
+    local name="$1"
+    load_env
+    ensure_network frontend >/dev/null 2>&1 || true
+    ensure_network backend  >/dev/null 2>&1 || true
+    case "$name" in
+        rainbow-postgres) start_postgres ;;
+        rainbow-valkey)   start_valkey ;;
+        rainbow-mariadb)  start_mariadb ;;
+        rainbow-authentik-server)
+            local pg vk
+            pg=$(container_ip rainbow-postgres)
+            vk=$(container_ip rainbow-valkey)
+            start_authentik_server "$pg" "$vk"
+            ;;
+        rainbow-authentik-worker) start_authentik_worker ;;
+        rainbow-immich)
+            local pg vk ml
+            pg=$(container_ip rainbow-postgres)
+            vk=$(container_ip rainbow-valkey)
+            ml=$(container_ip rainbow-immich-ml)
+            start_immich_server "$pg" "$vk" "$ml"
+            ;;
+        rainbow-immich-ml) start_immich_ml ;;
+        rainbow-seafile)
+            local mdb
+            mdb=$(container_ip rainbow-mariadb)
+            start_seafile "$mdb"
+            ;;
+        rainbow-cryptpad) start_cryptpad ;;
+        rainbow-stalwart) start_stalwart ;;
+        rainbow-jellyfin) start_jellyfin ;;
+        rainbow-web)      start_web ;;
+        rainbow-caddy)    start_caddy ;;
+        rainbow-cloudflared)
+            local cip
+            cip=$(container_ip rainbow-caddy)
+            start_cloudflared "$cip"
+            ;;
+        *)
+            orch_err "restart_one: unknown container '$name'"
+            return 1
+            ;;
+    esac
+}
+
 stop_all() {
     for name in "${RAINBOW_CONTAINERS[@]}"; do
         if container_exists "$name"; then
@@ -661,11 +713,12 @@ remove_all() {
 
 # ─── Dispatch ────────────────────────────────────────────────────
 case "${1:-}" in
-    minimum)  start_minimum ;;
-    stop)     stop_all ;;
-    remove)   remove_all ;;
+    minimum)           start_minimum ;;
+    stop)              stop_all ;;
+    remove)            remove_all ;;
+    restart-container) restart_one "${2:?usage: restart-container <rainbow-*>}" ;;
     "")
-        echo "Usage: $0 <minimum|stop|remove>" >&2
+        echo "Usage: $0 <minimum|stop|remove|restart-container <name>>" >&2
         exit 1
         ;;
     *)
