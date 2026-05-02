@@ -267,6 +267,20 @@ start_web() {
     stalwart_jmap_user=$(security find-generic-password -s rainbow-stalwart-jmap-user -w 2>/dev/null || echo "")
     stalwart_jmap_password=$(security find-generic-password -s rainbow-stalwart-jmap-password -w 2>/dev/null || echo "")
 
+    # Inbound-mail HMAC shared secret. Cloudflare Email Worker signs the
+    # webhook body with this; web tier verifies. Auto-mint if absent so a
+    # fresh install has a working secret without manual provisioning. The
+    # SAME value must be set as a Worker secret via wrangler.
+    local inbound_mail_secret
+    inbound_mail_secret=$(security find-generic-password -s rainbow-inbound-mail-secret -w 2>/dev/null || echo "")
+    if [ -z "$inbound_mail_secret" ]; then
+        orch_info "Minting rainbow-inbound-mail-secret in Keychain..."
+        inbound_mail_secret=$(openssl rand -hex 32)
+        security add-generic-password \
+            -s rainbow-inbound-mail-secret -a rainbow \
+            -w "$inbound_mail_secret" -U
+    fi
+
     # Postgres connection — web stores its own data (web_config, app
     # metadata + per-app key/value persistence) in a dedicated `rainbow_web`
     # database. Connecting on the backend network requires we join it.
@@ -299,6 +313,7 @@ start_web() {
         --env "JELLYFIN_API_KEY=${jellyfin_api_key}" \
         --env "STALWART_JMAP_USER=${stalwart_jmap_user}" \
         --env "STALWART_JMAP_PASSWORD=${stalwart_jmap_password}" \
+        --env "RAINBOW_INBOUND_MAIL_SECRET=${inbound_mail_secret}" \
         --env "POSTGRES_HOST=${postgres_ip}" \
         --env "POSTGRES_PORT=5432" \
         --env "POSTGRES_USER=${POSTGRES_USER:-rainbow}" \

@@ -18,7 +18,7 @@ domain:
 # API token needs Zone.DNS:Edit and Cloudflare Tunnel permissions.
 # Store the actual token in macOS Keychain (the installer does this automatically).
 cloudflare:
-  zone_id: ""
+  zone_id: "df1a726c81d085bb50a8be9f30d82730"
   tunnel_id: "637940cb-2a5d-481b-9e84-4f121d26635f"
   # api_token is read from macOS Keychain at runtime, not stored here
 # --- Admin ---

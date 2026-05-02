@@ -10,11 +10,16 @@ import { statusRouter } from "./status.js";
 import { adminRouter } from "./admin.js";
 import { appsRouter } from "./apps.js";
 import { servicesControlRouter } from "./services-control.js";
+import { inboundMailRouter } from "./inbound-mail.js";
 
 export const apiRouter = Router();
 
 // Auth routes are public — they're how you become authenticated.
 apiRouter.use("/auth", authRouter);
+
+// Inbound mail webhook is public but HMAC-protected (called by the Cloudflare
+// Email Worker, which can't carry our OIDC session cookie).
+apiRouter.use("/inbound-mail", inboundMailRouter);
 
 // Everything below this point requires authentication.
 apiRouter.use(requireAuth);
