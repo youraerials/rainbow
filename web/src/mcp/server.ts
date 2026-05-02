@@ -16,6 +16,7 @@ import { registerSystemTools } from "./tools/system/index.js";
 import { registerPhotoTools } from "./tools/photos/index.js";
 import { registerFileTools } from "./tools/files/index.js";
 import { registerMediaTools } from "./tools/media/index.js";
+import { registerEmailTools } from "./tools/email/index.js";
 
 /**
  * Names of every tool currently registered on the gateway. Captured in
@@ -70,6 +71,10 @@ function buildServer(): McpServer {
 
     // Media (Jellyfin). Disabled at boot if JELLYFIN_API_KEY isn't set.
     registerMediaTools(server);
+
+    // Email (Stalwart JMAP). Disabled at boot if STALWART_JMAP_USER/PASSWORD
+    // aren't set — Stalwart's first-run setup wizard creates that account.
+    registerEmailTools(server);
 
     return server;
 }

@@ -19,6 +19,13 @@ export interface ServiceDescriptor {
     displayName: string;
     description: string;
     healthPath: string; // path appended to publicUrl() for liveness checks
+    // Containers that make up this service. Defaults to ["rainbow-<name>"].
+    // Multi-container services (authentik server+worker, immich server+ML)
+    // override this so restart/logs apply to the right set.
+    containers?: string[];
+    // The "primary" container — the one whose logs are most useful to a human
+    // looking at the service. Defaults to containers[0] or "rainbow-<name>".
+    primaryContainer?: string;
 }
 
 export const SERVICES: ServiceDescriptor[] = [
@@ -28,6 +35,8 @@ export const SERVICES: ServiceDescriptor[] = [
         displayName: "Authentik",
         description: "Identity & single sign-on",
         healthPath: "/-/health/ready/",
+        containers: ["rainbow-authentik-server", "rainbow-authentik-worker"],
+        primaryContainer: "rainbow-authentik-server",
     },
     {
         name: "immich",
@@ -35,6 +44,8 @@ export const SERVICES: ServiceDescriptor[] = [
         displayName: "Immich",
         description: "Photos & video management",
         healthPath: "/api/server/ping",
+        containers: ["rainbow-immich", "rainbow-immich-ml"],
+        primaryContainer: "rainbow-immich",
     },
     {
         name: "stalwart",
@@ -65,6 +76,18 @@ export const SERVICES: ServiceDescriptor[] = [
         healthPath: "/health",
     },
 ];
+
+export function findBySlug(slug: string): ServiceDescriptor | undefined {
+    return SERVICES.find((s) => s.slug === slug);
+}
+
+export function containersFor(svc: ServiceDescriptor): string[] {
+    return svc.containers ?? [`rainbow-${svc.name}`];
+}
+
+export function primaryContainerFor(svc: ServiceDescriptor): string {
+    return svc.primaryContainer ?? containersFor(svc)[0];
+}
 
 export function publicHost(slug: string): string {
     return `${HOST_PREFIX}${slug}.${ZONE}`;

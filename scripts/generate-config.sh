@@ -123,12 +123,11 @@ main() {
 
     # ── Secrets from Keychain ────────────────────────────────────
     local pg_password mariadb_root_pass authentik_secret authentik_bootstrap_pass
-    local stalwart_admin_pass seafile_admin_pass cf_tunnel_token
+    local seafile_admin_pass cf_tunnel_token
     pg_password=$(keychain_get "postgres-password")
     mariadb_root_pass=$(keychain_get "mariadb-root-password")
     authentik_secret=$(keychain_get "authentik-secret")
     authentik_bootstrap_pass=$(keychain_get "authentik-bootstrap-password")
-    stalwart_admin_pass=$(keychain_get "stalwart-admin-password")
     seafile_admin_pass=$(keychain_get "seafile-admin-password")
     cf_tunnel_token=$(keychain_get "cloudflare-tunnel-token")
 
@@ -224,15 +223,15 @@ EOF
             "OAUTH_PHOTOS_CLIENT_SECRET" "$oauth_photos_secret"
     fi
 
-    # Stalwart
+    # Stalwart: nothing to render. The orchestrator passes
+    # `--config /opt/stalwart/etc/config.json`, which doesn't exist on first
+    # start so Stalwart enters bootstrap mode. The user completes the web
+    # wizard once (services/stalwart/README.md), and Stalwart writes its
+    # canonical config.json into the bind-mounted /opt/stalwart/etc/. Pre-
+    # rendering anything here just gets ignored at best and breaks bootstrap
+    # at worst — Stalwart 0.16's per-store schema is strict.
     if service_enabled "stalwart"; then
         mkdir -p "$stalwart_data/etc" 2>/dev/null || true
-        render_template \
-            "$TEMPLATES_DIR/stalwart/config.toml.j2" \
-            "$stalwart_data/etc/config.toml" \
-            "RAINBOW_DOMAIN" "$domain" \
-            "STALWART_DATA_PATH" "$stalwart_data" \
-            "STALWART_ADMIN_PASSWORD" "$stalwart_admin_pass"
     fi
 
     # Seafile

@@ -202,19 +202,29 @@ compile_seafile_env() {
 
 start_stalwart() {
     orch_info "Starting Stalwart mail server..."
-    # Stalwart's data dir holds config (etc/config.toml — generate-config.sh
-    # already wrote it there), the JMAP/IMAP indexes, and message storage.
-    # Bind-mounting from $APPDATA so the user can browse mail data in Finder.
+    # Stalwart's persistent data lives at /opt/stalwart inside the container —
+    # bound to $data_dir on the host so the user can browse mail in Finder and
+    # restic can back it up.
+    #
+    # First-run setup is web-driven (see services/stalwart/README.md). The
+    # image's default `--config /etc/stalwart/config.json` points at an
+    # ephemeral path inside the image, so we override the args to point inside
+    # the bind-mount instead. On first start the file doesn't exist → Stalwart
+    # enters bootstrap mode → the user completes the wizard at <prefix>-mail
+    # → wizard writes its canonical config to the bind-mounted path → all
+    # subsequent restarts skip bootstrap.
+    #
+    # We don't pre-render any config of our own. Stalwart 0.16's per-store
+    # schema is strict and our hand-rolled TOML kept it stuck in bootstrap.
+    # Letting the wizard own the file is simpler and survives upgrades.
     local data_dir="$APPDATA/stalwart"
     mkdir -p "$data_dir/etc"
     chmod -R u+rwX "$data_dir" 2>/dev/null || true
-    # SMTP/IMAP ports: would need either router port-forwarding or a Cloudflare
-    # TCP tunnel ingress to be reachable from outside. For now we expose only
-    # the admin/web UI on :8080 via Caddy — mail-flow setup is a later task.
     replace_container rainbow-stalwart \
         --network frontend \
         --volume "$data_dir:/opt/stalwart" \
         docker.io/stalwartlabs/stalwart:latest \
+        --config /opt/stalwart/etc/config.json \
         >/dev/null
 }
 
@@ -248,11 +258,32 @@ start_web() {
     seafile_api_token=$(security find-generic-password -s rainbow-seafile-api-token -w 2>/dev/null || echo "")
     jellyfin_api_key=$(security find-generic-password -s rainbow-jellyfin-api-key -w 2>/dev/null || echo "")
 
+    # Stalwart JMAP credentials. Stalwart 0.16's first-run wizard is web-driven
+    # (see services/stalwart/README.md); the user creates a JMAP account
+    # interactively and stores its login here. mcp-email refuses to register
+    # tools when these are absent.
+    local stalwart_jmap_user stalwart_jmap_password
+    stalwart_jmap_user=$(security find-generic-password -s rainbow-stalwart-jmap-user -w 2>/dev/null || echo "")
+    stalwart_jmap_password=$(security find-generic-password -s rainbow-stalwart-jmap-password -w 2>/dev/null || echo "")
+
     # Postgres connection — web stores its own data (web_config, app
     # metadata + per-app key/value persistence) in a dedicated `rainbow_web`
     # database. Connecting on the backend network requires we join it.
     local postgres_ip
     postgres_ip=$(container_ip rainbow-postgres 2>/dev/null || echo "")
+
+    # Host control daemon: lets the dashboard restart/stop/start containers
+    # and tail logs without giving the web tier the `container` CLI itself.
+    # The daemon runs on the host (services/control/install.sh) and listens
+    # on :9001. Web reaches it at host.docker.internal. If install hasn't
+    # been run, RAINBOW_CONTROL_TOKEN will be empty and /api/services/*/{restart,logs}
+    # will 503.
+    local control_token
+    control_token=$(security find-generic-password -s rainbow-control-token -w 2>/dev/null || echo "")
+    if [ -z "$control_token" ]; then
+        orch_warn "rainbow-control-token not in Keychain — service restart/logs from dashboard will be unavailable."
+        orch_warn "Run services/control/install.sh on the host to enable."
+    fi
 
     replace_container rainbow-web \
         --network frontend \
@@ -265,11 +296,15 @@ start_web() {
         --env "IMMICH_API_KEY=${immich_api_key}" \
         --env "SEAFILE_API_TOKEN=${seafile_api_token}" \
         --env "JELLYFIN_API_KEY=${jellyfin_api_key}" \
+        --env "STALWART_JMAP_USER=${stalwart_jmap_user}" \
+        --env "STALWART_JMAP_PASSWORD=${stalwart_jmap_password}" \
         --env "POSTGRES_HOST=${postgres_ip}" \
         --env "POSTGRES_PORT=5432" \
         --env "POSTGRES_USER=${POSTGRES_USER:-rainbow}" \
         --env "POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}" \
         --env "POSTGRES_WEB_DB=rainbow_web" \
+        --env "RAINBOW_CONTROL_URL=http://host.docker.internal:9001" \
+        --env "RAINBOW_CONTROL_TOKEN=${control_token}" \
         --volume "$RAINBOW_ROOT/dashboard/dist:/usr/share/web/dashboard:ro" \
         --volume "$apps_dir:/var/lib/rainbow/apps" \
         rainbow-web:latest \

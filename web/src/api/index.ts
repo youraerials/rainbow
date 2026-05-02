@@ -9,6 +9,7 @@ import { authRouter } from "./auth.js";
 import { statusRouter } from "./status.js";
 import { adminRouter } from "./admin.js";
 import { appsRouter } from "./apps.js";
+import { servicesControlRouter } from "./services-control.js";
 
 export const apiRouter = Router();
 
@@ -35,6 +36,9 @@ apiRouter.get("/health", (req, res) => {
 
 // /api/status, /api/services — service catalog + live health.
 apiRouter.use(statusRouter);
+
+// /api/services/:slug/{restart,start,stop,logs} — proxies to host control daemon.
+apiRouter.use(servicesControlRouter);
 
 // /api/admin/* — admin config (Anthropic key, etc.)
 apiRouter.use("/admin", adminRouter);

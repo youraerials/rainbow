@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>rocks.rainbow.control</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/node</string>
+        <string>__RAINBOW_ROOT__/services/control/server.js</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>RAINBOW_CONTROL_PORT</key>
+        <string>9001</string>
+        <key>RAINBOW_ROOT</key>
+        <string>__RAINBOW_ROOT__</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__RAINBOW_HOME__/Library/Logs/rainbow-control.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__RAINBOW_HOME__/Library/Logs/rainbow-control.err.log</string>
+</dict>
+</plist>
