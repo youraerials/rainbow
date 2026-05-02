@@ -26,7 +26,7 @@
 # reverse-proxies everything; the web tier handles routing internally.
 http://test.rainbow.rocks {
 	encode gzip
-	reverse_proxy 192.168.66.238:3000
+	reverse_proxy 192.168.66.253:3000
 }
 
 # ─── Auth (Authentik) ────────────────────────────────────────────
@@ -41,7 +41,7 @@ http://test-photos.rainbow.rocks {
 
 # ─── Email (Stalwart) ────────────────────────────────────────────
 http://test-mail.rainbow.rocks {
-	reverse_proxy 192.168.66.242:8080
+	reverse_proxy 192.168.66.8:8080
 }
 
 # ─── Files (Seafile) ─────────────────────────────────────────────

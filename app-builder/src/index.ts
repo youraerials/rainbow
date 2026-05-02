@@ -5,17 +5,21 @@
  * custom apps via Claude.
  */
 
-r = await fetch("/api/apps/generate", {
+fetch("/mcp", {
   method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+  },
   body: JSON.stringify({
-    slug: "photo-grid",
-    name: "Photo Grid",
-    prompt:
-      "A simple grid view of my recent photos. Click a photo to see its filename and date.",
+    jsonrpc: "2.0",
+    method: "tools/call",
+    id: 2,
+    params: { name: "email.list_mailboxes", arguments: {} },
   }),
-});
+})
+  .then((r) => r.text())
+  .then(console.log);
 
 import express from "express";
 import { Orchestrator } from "./builder/orchestrator.js";

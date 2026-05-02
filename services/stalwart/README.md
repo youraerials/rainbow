@@ -27,10 +27,39 @@ no JMAP user exists for it to authenticate as, so there's nothing to do.
    password from step 1.
 
 3. **Complete the wizard.** Click through the setup pages. Pick:
+   - Server hostname: `<prefix>-mail.<zone>` (the public mail FQDN, e.g.
+     `test-mail.rainbow.rocks`). NOT the container's internal name.
+   - Email domain: `<zone>` (e.g. `test.rainbow.rocks`) — what comes after `@`
+     in addresses.
    - Storage backend: **RocksDB** (the default, embedded). Other choices are
      valid but require external services we haven't wired up.
+   - DNS server type: **manual** — Caddy/Cloudflare Tunnel handles TLS, so
+     Stalwart doesn't need to issue certs itself.
    - Cluster: leave blank (single node).
-   - Hostname: pre-filled from your config.
+
+3a. **Patch the DB path so it actually persists.** This is critical and easy
+   to miss. The wizard writes a `config.json` whose `path` field points at
+   `/var/lib/stalwart/` — that's *inside the image*, ephemeral, wiped on
+   container recreate. You need to:
+
+   ```bash
+   # While Stalwart is still running (so the data is there to copy)
+   container exec rainbow-stalwart sh -c \
+     'mkdir -p /opt/stalwart/data && cp -a /var/lib/stalwart/. /opt/stalwart/data/'
+
+   # Edit config.json to point at the persistent location
+   jq '.path = "/opt/stalwart/data/"' \
+     "$HOME/Library/Application Support/Rainbow/stalwart/etc/config.json" \
+     > /tmp/cfg.json && mv /tmp/cfg.json \
+     "$HOME/Library/Application Support/Rainbow/stalwart/etc/config.json"
+
+   # Restart so Stalwart picks up the new path
+   curl -X POST -H "Authorization: Bearer $(security find-generic-password -s rainbow-control-token -w)" \
+     http://localhost:9001/restart/rainbow-stalwart
+   ```
+
+   After this, `make stop && make start` (which deletes and recreates
+   containers) will preserve the wizard config + accounts + mail data.
 
 4. **Create your real admin user + a personal mailbox.** After the wizard, in
    the admin UI go to *Directory → Accounts* and create:

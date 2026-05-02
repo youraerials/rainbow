@@ -202,27 +202,28 @@ compile_seafile_env() {
 
 start_stalwart() {
     orch_info "Starting Stalwart mail server..."
-    # Stalwart's persistent data lives at /opt/stalwart inside the container —
-    # bound to $data_dir on the host so the user can browse mail in Finder and
-    # restic can back it up.
+    # Stalwart writes data to two paths inside the container:
+    #   - /opt/stalwart/etc/config.json — bootstrap config the wizard creates
+    #   - /var/lib/stalwart/             — RocksDB data dir (the wizard's default)
+    # Both must be persistent. We bind-mount the image's working directory
+    # `/var/lib/stalwart` to a host subdir so the wizard's default RocksDB path
+    # lands on disk and survives container recreate. Without this second
+    # mount, every `make start` wipes the wizard's account data — RocksDB sits
+    # in the container's writable layer, which is gone after `container delete`.
     #
     # First-run setup is web-driven (see services/stalwart/README.md). The
-    # image's default `--config /etc/stalwart/config.json` points at an
-    # ephemeral path inside the image, so we override the args to point inside
-    # the bind-mount instead. On first start the file doesn't exist → Stalwart
-    # enters bootstrap mode → the user completes the wizard at <prefix>-mail
-    # → wizard writes its canonical config to the bind-mounted path → all
-    # subsequent restarts skip bootstrap.
-    #
-    # We don't pre-render any config of our own. Stalwart 0.16's per-store
-    # schema is strict and our hand-rolled TOML kept it stuck in bootstrap.
-    # Letting the wizard own the file is simpler and survives upgrades.
+    # image's default args are `--config /etc/stalwart/config.json` (a path
+    # that doesn't exist on a fresh image), so we override to point inside the
+    # bind-mount. On first start Stalwart enters bootstrap mode → user
+    # completes the wizard at <prefix>-mail/admin/ → wizard writes config.json
+    # and seeds the RocksDB → all subsequent restarts skip bootstrap.
     local data_dir="$APPDATA/stalwart"
-    mkdir -p "$data_dir/etc"
+    mkdir -p "$data_dir/etc" "$data_dir/db"
     chmod -R u+rwX "$data_dir" 2>/dev/null || true
     replace_container rainbow-stalwart \
         --network frontend \
         --volume "$data_dir:/opt/stalwart" \
+        --volume "$data_dir/db:/var/lib/stalwart" \
         docker.io/stalwartlabs/stalwart:latest \
         --config /opt/stalwart/etc/config.json \
         >/dev/null
