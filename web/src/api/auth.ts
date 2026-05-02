@@ -98,3 +98,27 @@ authRouter.get("/config", (_req: Request, res: Response) => {
         logoutUrl: "/api/auth/logout",
     });
 });
+
+// /api/auth/bearer — return the current session's id_token so a logged-in
+// user can copy it into a machine client (Claude Desktop's MCP config, an API
+// tool-use script, etc.). Requires a valid session cookie. Token expires when
+// the cookie does (~24h); the user just re-runs this to refresh.
+authRouter.get("/bearer", async (req: Request, res: Response) => {
+    const cookie = (req as Request & { cookies?: Record<string, string> })
+        .cookies?.[SESSION_COOKIE];
+    if (!cookie) {
+        res.status(401).json({ error: "no session" });
+        return;
+    }
+    try {
+        await verifyJwt(cookie);
+        res.json({
+            token: cookie,
+            tokenType: "Bearer",
+            authorization: `Bearer ${cookie}`,
+            note: "Pass this in Authorization header to /mcp. Refresh by re-visiting this URL after re-login.",
+        });
+    } catch {
+        res.status(401).json({ error: "session invalid; re-login at /api/auth/login" });
+    }
+});

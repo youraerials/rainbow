@@ -7,6 +7,9 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerSearchPhotos } from "./search.js";
+import { registerRecent } from "./recent.js";
+import { registerListAlbums, registerCreateAlbum } from "./albums.js";
+import { registerShareAlbum } from "./share.js";
 
 export function registerPhotoTools(server: McpServer): void {
     if (!process.env.IMMICH_API_KEY) {
@@ -14,5 +17,11 @@ export function registerPhotoTools(server: McpServer): void {
         return;
     }
     registerSearchPhotos(server);
-    // create-album, share-album, upload-photo, recent, albums land here next.
+    registerRecent(server);
+    registerListAlbums(server);
+    registerCreateAlbum(server);
+    registerShareAlbum(server);
+    // upload_photo intentionally deferred: needs multipart/form-data handling
+    // and a file source on the server side, which we'd have to design (probably
+    // via a /api/upload endpoint that the SPA or generated apps use).
 }

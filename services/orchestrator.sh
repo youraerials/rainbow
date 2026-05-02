@@ -241,10 +241,11 @@ start_web() {
     fi
 
     # Per-service API keys for the MCP tools. Provisioned by each service's
-    # post-start setup hook (e.g. immich/setup.sh creates the Immich key).
+    # post-start setup hook (immich/setup.sh, seafile/setup.sh).
     # Missing keys aren't fatal — the corresponding tools will return errors.
-    local immich_api_key
+    local immich_api_key seafile_api_token
     immich_api_key=$(security find-generic-password -s rainbow-immich-api-key -w 2>/dev/null || echo "")
+    seafile_api_token=$(security find-generic-password -s rainbow-seafile-api-token -w 2>/dev/null || echo "")
 
     replace_container rainbow-web \
         --network frontend \
@@ -254,6 +255,7 @@ start_web() {
         --env "RAINBOW_OAUTH_CLIENT_ID=${web_client_id}" \
         --env "RAINBOW_OAUTH_CLIENT_SECRET=${web_client_secret}" \
         --env "IMMICH_API_KEY=${immich_api_key}" \
+        --env "SEAFILE_API_TOKEN=${seafile_api_token}" \
         --volume "$RAINBOW_ROOT/dashboard/dist:/usr/share/web/dashboard:ro" \
         --volume "$apps_dir:/var/lib/rainbow/apps" \
         rainbow-web:latest \
