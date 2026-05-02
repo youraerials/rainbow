@@ -220,7 +220,7 @@ start_stalwart() {
 
 start_web() {
     orch_info "Starting Rainbow web tier..."
-    # The web container hosts dashboard SPA + REST API + MCP gateway + (later)
+    # The web container hosts dashboard SPA + REST API + MCP gateway +
     # user-generated apps. dashboard/dist is bind-mounted so UI iteration
     # doesn't require rebuilding the image. apps/ persists user-generated apps.
     local apps_dir="$APPDATA/web-apps"
@@ -241,14 +241,22 @@ start_web() {
     fi
 
     # Per-service API keys for the MCP tools. Provisioned by each service's
-    # post-start setup hook (immich/setup.sh, seafile/setup.sh).
+    # post-start setup hook (immich/setup.sh, seafile/setup.sh, jellyfin/setup.sh).
     # Missing keys aren't fatal — the corresponding tools will return errors.
-    local immich_api_key seafile_api_token
+    local immich_api_key seafile_api_token jellyfin_api_key
     immich_api_key=$(security find-generic-password -s rainbow-immich-api-key -w 2>/dev/null || echo "")
     seafile_api_token=$(security find-generic-password -s rainbow-seafile-api-token -w 2>/dev/null || echo "")
+    jellyfin_api_key=$(security find-generic-password -s rainbow-jellyfin-api-key -w 2>/dev/null || echo "")
+
+    # Postgres connection — web stores its own data (web_config, app
+    # metadata + per-app key/value persistence) in a dedicated `rainbow_web`
+    # database. Connecting on the backend network requires we join it.
+    local postgres_ip
+    postgres_ip=$(container_ip rainbow-postgres 2>/dev/null || echo "")
 
     replace_container rainbow-web \
         --network frontend \
+        --network backend \
         --env "RAINBOW_HOST_PREFIX=${RAINBOW_HOST_PREFIX:-}" \
         --env "RAINBOW_ZONE=${RAINBOW_ZONE:-}" \
         --env "RAINBOW_WEB_HOST=${RAINBOW_WEB_HOST:-}" \
@@ -256,6 +264,12 @@ start_web() {
         --env "RAINBOW_OAUTH_CLIENT_SECRET=${web_client_secret}" \
         --env "IMMICH_API_KEY=${immich_api_key}" \
         --env "SEAFILE_API_TOKEN=${seafile_api_token}" \
+        --env "JELLYFIN_API_KEY=${jellyfin_api_key}" \
+        --env "POSTGRES_HOST=${postgres_ip}" \
+        --env "POSTGRES_PORT=5432" \
+        --env "POSTGRES_USER=${POSTGRES_USER:-rainbow}" \
+        --env "POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}" \
+        --env "POSTGRES_WEB_DB=rainbow_web" \
         --volume "$RAINBOW_ROOT/dashboard/dist:/usr/share/web/dashboard:ro" \
         --volume "$apps_dir:/var/lib/rainbow/apps" \
         rainbow-web:latest \
@@ -547,6 +561,8 @@ start_minimum() {
         orch_warn "seafile post-start setup failed (run services/seafile/setup.sh manually)"
     bash "$ORCH_DIR/immich/setup.sh" || \
         orch_warn "immich post-start setup failed (run services/immich/setup.sh manually)"
+    bash "$ORCH_DIR/jellyfin/setup.sh" || \
+        orch_warn "jellyfin post-start setup failed (run services/jellyfin/setup.sh manually)"
 
     local prefix zone host_prefix web_host
     prefix=$(yq eval '.domain.prefix' "$CONFIG_FILE")

@@ -5,6 +5,18 @@
  * custom apps via Claude.
  */
 
+r = await fetch("/api/apps/generate", {
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    slug: "photo-grid",
+    name: "Photo Grid",
+    prompt:
+      "A simple grid view of my recent photos. Click a photo to see its filename and date.",
+  }),
+});
+
 import express from "express";
 import { Orchestrator } from "./builder/orchestrator.js";
 import { AppRegistry } from "./registry/app-registry.js";

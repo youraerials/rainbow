@@ -15,12 +15,33 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { registerSystemTools } from "./tools/system/index.js";
 import { registerPhotoTools } from "./tools/photos/index.js";
 import { registerFileTools } from "./tools/files/index.js";
+import { registerMediaTools } from "./tools/media/index.js";
+
+/**
+ * Names of every tool currently registered on the gateway. Captured in
+ * registration order at boot. Used by the app-generation prompt so Claude
+ * knows what tools an app can call.
+ */
+const REGISTERED_TOOLS: string[] = [];
+
+export function listToolNames(): string[] {
+    return REGISTERED_TOOLS.slice();
+}
 
 function buildServer(): McpServer {
     const server = new McpServer({
         name: "rainbow",
         version: "0.1.0",
     });
+
+    // Wrap server.tool to also record the tool name for prompt generation.
+    const originalTool = server.tool.bind(server);
+    server.tool = ((name: string, ...rest: unknown[]) => {
+        REGISTERED_TOOLS.push(name);
+        // Forward whatever the SDK accepted: we don't reshape the args.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (originalTool as any)(name, ...rest);
+    }) as typeof server.tool;
 
     // Connectivity probe.
     server.tool(
@@ -46,6 +67,9 @@ function buildServer(): McpServer {
 
     // Files (Seafile). Disabled at boot if SEAFILE_API_TOKEN isn't set.
     registerFileTools(server);
+
+    // Media (Jellyfin). Disabled at boot if JELLYFIN_API_KEY isn't set.
+    registerMediaTools(server);
 
     return server;
 }

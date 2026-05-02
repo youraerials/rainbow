@@ -173,6 +173,14 @@ configure_provider() {
 
     local provider_pk
     provider_pk=$(find_provider "$provider_name")
+    # Long-lived tokens for the Web provider (machine clients like Claude
+    # Desktop). Default 5min validity is too short to be usable; 30 days
+    # matches typical service-token cadence.
+    local access_validity="minutes=10"
+    if [ "$slug" = "web" ]; then
+        access_validity="days=30"
+    fi
+
     if [ -n "$provider_pk" ]; then
         echo "  Provider exists (pk=$provider_pk) — updating fields"
         curl -sS -m 10 -H "$AUTH_HEADER" -H "Content-Type: application/json" \
@@ -181,11 +189,13 @@ configure_provider() {
                 --argjson uris "$uris_json" \
                 --arg cert "$cert_pk" \
                 --argjson scopes "$scope_pks" \
+                --arg validity "$access_validity" \
                 '{
                     redirect_uris: $uris,
                     signing_key: $cert,
                     signature_alg: "RS256",
-                    property_mappings: $scopes
+                    property_mappings: $scopes,
+                    access_token_validity: $validity
                 }')" >/dev/null
     else
         echo "  Creating provider..."
@@ -198,6 +208,7 @@ configure_provider() {
                 --arg cert "$cert_pk" \
                 --argjson uris "$uris_json" \
                 --argjson scopes "$scope_pks" \
+                --arg validity "$access_validity" \
                 '{
                     name: $name,
                     authorization_flow: $flow,
@@ -207,6 +218,7 @@ configure_provider() {
                     client_type: "confidential",
                     redirect_uris: $uris,
                     property_mappings: $scopes,
+                    access_token_validity: $validity,
                     sub_mode: "hashed_user_id",
                     include_claims_in_id_token: true,
                     issuer_mode: "per_provider"

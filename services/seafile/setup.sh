@@ -52,6 +52,12 @@ if is_serving; then
     SEAFILE_ALREADY_SERVING=true
 fi
 
+mariadb_current_ip() {
+    container inspect rainbow-mariadb 2>/dev/null \
+        | yq -p=json '.[0].networks[0].ipv4Address' 2>/dev/null \
+        | sed 's|/.*||'
+}
+
 # ─── Self-heal the seafile MySQL user host ───────────────────────
 # Find MariaDB's IP (its container is on the backend network alongside
 # seafile) and try to fix the user host. Skips quietly if the user doesn't
@@ -59,9 +65,7 @@ fi
 # come back after start.py runs and (re)apply.
 fix_seafile_user_host() {
     local mariadb_ip mdb_pass
-    mariadb_ip=$(container inspect rainbow-mariadb 2>/dev/null \
-        | yq -p=json '.[0].networks[0].ipv4Address' 2>/dev/null \
-        | sed 's|/.*||')
+    mariadb_ip=$(mariadb_current_ip)
     mdb_pass=$(security find-generic-password -s rainbow-mariadb-root-password -w 2>/dev/null || echo "")
     if [ -z "$mariadb_ip" ] || [ -z "$mdb_pass" ]; then
         return 0
@@ -82,6 +86,40 @@ fix_seafile_user_host() {
     fi
 }
 
+# ─── Rewrite stored DB_HOST in /shared/seafile/conf/ ─────────────
+# Apple Container assigns fresh IPs to mariadb on every `make start`, but
+# seafile-mc stores its DB host in /shared/seafile/conf/{ccnet,seafile}.conf
+# and seahub_settings.py at first-run init. After a restart those files
+# point at the OLD mariadb IP, so the server can't connect even though the
+# env-passed DB_HOST is correct.
+#
+# This rewrites the stored configs to the current IP. Idempotent: if the
+# stored IP already matches, nothing changes.
+rewrite_stored_db_host() {
+    local current_ip
+    current_ip=$(mariadb_current_ip)
+    [ -z "$current_ip" ] && return 0
+
+    # Only run if seafile has been initialized (conf dir exists in /shared).
+    if ! container exec "$CONTAINER" test -d /shared/seafile/conf 2>/dev/null; then
+        return 0
+    fi
+
+    local stored_ip
+    stored_ip=$(container exec "$CONTAINER" sh -c \
+        "grep -hE '^(host|DB_HOST)\s*=' /shared/seafile/conf/ccnet.conf /shared/seafile/conf/seafile.conf 2>/dev/null \
+            | head -n1 | sed -E 's/^[^=]+=[[:space:]]*//'" 2>/dev/null || echo "")
+
+    if [ -z "$stored_ip" ] || [ "$stored_ip" = "$current_ip" ]; then
+        return 0
+    fi
+
+    log "  Rewriting stored DB_HOST in /shared/seafile/conf/: $stored_ip → $current_ip"
+    container exec "$CONTAINER" sh -c "
+        sed -i 's|$stored_ip|$current_ip|g' /shared/seafile/conf/ccnet.conf /shared/seafile/conf/seafile.conf /shared/seafile/conf/seahub_settings.py 2>/dev/null || true
+    " >/dev/null 2>&1 || true
+}
+
 # ─── Run start.py auto, with retry-after-fix on Access-denied ────
 run_start_auto() {
     container exec "$CONTAINER" python3 /scripts/start.py auto 2>&1
@@ -89,6 +127,7 @@ run_start_auto() {
 
 if [ "$SEAFILE_ALREADY_SERVING" != "true" ]; then
     log "Running /scripts/start.py auto..."
+    rewrite_stored_db_host
     fix_seafile_user_host
     output=$(run_start_auto || true)
     if echo "$output" | tail -10 | grep -q 'Successfully'; then

@@ -18,7 +18,9 @@ import { SESSION_COOKIE } from "../auth/middleware.js";
 
 const STATE_COOKIE = "rainbow_oauth_state";
 const STATE_MAX_AGE_MS = 10 * 60 * 1000;
-const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// 30 days — matches the Web provider's access_token_validity in Authentik so
+// the cookie expires at the same time as the JWT inside it.
+const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const authRouter = Router();
 

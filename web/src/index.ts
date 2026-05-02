@@ -19,6 +19,8 @@ import { apiRouter } from "./api/index.js";
 import { attachMcp } from "./mcp/server.js";
 import { configureOidc } from "./auth/oidc.js";
 import { requireAuth } from "./auth/middleware.js";
+import { migrate } from "./db/migrate.js";
+import { isConfigured as dbConfigured } from "./db/pool.js";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const DASHBOARD_DIR = process.env.RAINBOW_DASHBOARD_DIR ?? "/usr/share/web/dashboard";
@@ -53,6 +55,16 @@ await configureOidc({
     redirectUri: REDIRECT_URI,
 });
 
+if (dbConfigured()) {
+    try {
+        await migrate();
+    } catch (err) {
+        console.error("[rainbow-web] DB migrations failed — continuing without DB:", err);
+    }
+} else {
+    console.warn("[rainbow-web] POSTGRES_HOST/POSTGRES_PASSWORD not set — DB-backed features disabled");
+}
+
 const app = express();
 app.set("trust proxy", true); // we're behind Caddy + Cloudflare Tunnel
 app.use(cookieParser());
@@ -63,6 +75,10 @@ app.use("/api", apiRouter);
 
 // MCP requires auth.
 attachMcp(app, "/mcp", requireAuth);
+
+// User-generated app static-file serving — auth-required so the same
+// session cookie that protects the dashboard protects each app.
+app.use("/apps", requireAuth, express.static(APPS_DIR, { index: "index.html" }));
 
 // Lock down the dashboard: an unauthenticated visitor sees nothing and is
 // redirected to the login flow. Rainbow is single-user private infrastructure;
