@@ -64,15 +64,16 @@
 
   <h3>What this installer does</h3>
   <ul>
-    <li>Installs Homebrew + Apple Container runtime if they're not already here</li>
     <li>Drops Rainbow at <strong>/Applications/Rainbow/</strong></li>
-    <li>Pulls the container image and starts the setup wizard in your browser</li>
+    <li>Fetches the runtime tools (Apple Container, cloudflared, restic, yq, jq) directly from their official sources — no Homebrew, no Xcode required</li>
+    <li>Initializes the container runtime and builds the Rainbow image on this Mac</li>
+    <li>Opens the setup wizard in your browser to finish: domain, services, administrator account</li>
   </ul>
 
   <p class="fineprint">
     Requires macOS 26 (Tahoe) on Apple Silicon, 8 GB RAM, and 30 GB free
-    disk. The wizard finishes everything else — domain choice, services,
-    administrator account.
+    disk, and an internet connection. Total install time: about five
+    minutes once you start, plus a few minutes in the wizard.
   </p>
 </body>
 </html>

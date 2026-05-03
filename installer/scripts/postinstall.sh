@@ -59,9 +59,12 @@ chown -R "$PRIMARY_USER" "$INSTALL_DIR"
 toast "Rainbow" "Fetching tools (~110 MB, takes a couple of minutes)"
 
 # ─── Fetch host binaries ────────────────────────────────────────
+# Run AS ROOT (we already are inside .pkg postinstall) so the .pkg
+# installer that ships Apple Container can run with `-target /`
+# without a prompt. Binaries land at $BIN_DIR owned by root, mode
+# 0755 — that's the standard pattern for /Applications/* tools.
 log "Fetching host binaries…"
-sudo -u "$PRIMARY_USER" \
-    RAINBOW_BIN_DIR="$BIN_DIR" \
+RAINBOW_BIN_DIR="$BIN_DIR" \
     bash "$SCRIPTS_DIR/lib/fetch-all.sh" \
     >> "$LOG_FILE" 2>&1 || fail "binary fetch step failed — see log"
 

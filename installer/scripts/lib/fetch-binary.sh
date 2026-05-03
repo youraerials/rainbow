@@ -93,7 +93,16 @@ fetch_binary() {
             # silently — it installs to /usr/local/bin/container.
             # We then symlink that into our bin dir so callers
             # don't need to know where Apple put it.
-            sudo -n /usr/sbin/installer -pkg "$cached" -target / >/dev/null
+            #
+            # Running `installer` against `-target /` requires root.
+            # Inside our outer .pkg's postinstall we're already root,
+            # so call it directly. Outside that context (dev use),
+            # fall back to sudo with a prompt.
+            if [ "$EUID" -eq 0 ]; then
+                /usr/sbin/installer -pkg "$cached" -target / >/dev/null
+            else
+                sudo /usr/sbin/installer -pkg "$cached" -target / >/dev/null
+            fi
             local installed_path="/usr/local/bin/container"
             if [ -x "$installed_path" ]; then
                 ln -sf "$installed_path" "$target"
