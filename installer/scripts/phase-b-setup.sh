@@ -41,13 +41,19 @@ log "Phase B starting (user=$USER)"
 # ─── Build rainbow-web image ──────────────────────────────────────
 toast "Rainbow" "Building Rainbow image (3-5 minutes)"
 
-# Apple Container 0.11's build helper container ('buildkit') doesn't
-# auto-recover from a stopped state — `container build` aborts with
-# "container expected to be in created state, got: stopped". This
-# happens on every re-install after a previous build. Force-delete
-# any stale buildkit so the build creates a fresh one. Idempotent:
-# fails silently if buildkit doesn't exist.
-"$BIN_DIR/container" delete --force buildkit >/dev/null 2>&1 || true
+# Pre-start the build helper (buildkit). Apple Container's implicit
+# buildkit bootstrap inside `container build` has a tight internal
+# timeout, so on a fresh install — where the buildkit image (~78 MB)
+# still has to be pulled — `container build` fails with "timeout:
+# failed to get a connection to agent socket". The dedicated
+# `builder start` subcommand has no such timeout, and is idempotent:
+# - missing: pulls the image, creates and starts buildkit
+# - stopped: starts it (also recovers from prior-install leftovers
+#   that would otherwise trip "expected created, got stopped")
+# - running: no-op, exits 0
+log "Starting build helper (buildkit)..."
+"$BIN_DIR/container" builder start \
+    >> "$LOG_FILE" 2>&1 || fail "failed to start buildkit"
 
 log "Building rainbow-web image..."
 (
