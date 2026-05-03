@@ -1,5 +1,11 @@
 # Multi-stage build for rainbow-web.
 #
+# Built once per release in CI (GitHub Actions on ubuntu-latest with
+# docker buildx for linux/arm64) and pushed to ghcr.io. End users
+# don't run this Dockerfile — the installer pulls the prebuilt image
+# from GHCR. The build is still here so dev `make start` works without
+# needing to pull from a registry.
+#
 # Stage 1: install all deps (incl. devDependencies) and compile TypeScript.
 # Stage 2: production node_modules + the compiled JS only.
 #

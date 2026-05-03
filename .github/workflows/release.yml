@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write   # creating releases + uploading assets
+  packages: write   # pushing rainbow-web to ghcr.io
 
 # Force checkout, setup-node, action-gh-release etc. onto the Node 24
 # runtime ahead of GitHub's June 2026 deprecation of Node 20. Drop this
@@ -26,7 +27,75 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  # ─── Build + push the rainbow-web image to GHCR ──────────────
+  # Runs on ubuntu-latest with docker/buildx so we can produce a
+  # linux/arm64 image. Apple Container's buildkit on the user's Mac
+  # used to build this in postinstall, but it hit a hard ~140 s
+  # deadline at `npm ci` we couldn't work around. Pulling a prebuilt
+  # image is faster and dodges that bug entirely.
+  #
+  # First push creates the package as private — flip it to public
+  # once at github.com/users/<owner>/packages/container/rainbow-web/settings.
+  build-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      image: ${{ steps.image.outputs.ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Compute image ref
+        id: image
+        run: |
+          OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          REF="ghcr.io/${OWNER_LC}/rainbow-web:${{ steps.version.outputs.version }}"
+          REF_LATEST="ghcr.io/${OWNER_LC}/rainbow-web:latest"
+          echo "ref=$REF"               >> "$GITHUB_OUTPUT"
+          echo "ref_latest=$REF_LATEST" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push rainbow-web (linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: web
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.image.outputs.ref }}
+            ${{ steps.image.outputs.ref_latest }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+
   release:
+    needs: build-image
     runs-on: macos-latest
     timeout-minutes: 20
 
@@ -75,6 +144,10 @@ jobs:
       - name: Build .pkg (compiles Swift daemon + bundles dashboard)
         env:
           RAINBOW_VERSION: ${{ env.VERSION }}
+          # Pin the rainbow-web image reference baked into the .pkg
+          # to the one we just pushed in build-image. The .pkg's Phase
+          # B `container image pull`s this exact tag at install time.
+          RAINBOW_WEB_IMAGE: ${{ needs.build-image.outputs.image }}
           # Embedded into the payload at build time so postinstall has
           # the bearer token it needs to talk to rainbow.rocks's
           # subdomain-manager Worker. Same value the Worker has as its
@@ -246,7 +319,7 @@ jobs:
 
             - Verifies your Mac (macOS 26+ on Apple Silicon, 8 GB RAM, 30 GB free)
             - Drops Rainbow at `/Applications/Rainbow/`
-            - Installs Homebrew + Apple Container if missing
-            - Builds the Rainbow image and starts the setup wizard in your browser
+            - Installs Apple Container if missing
+            - Pulls the Rainbow image from `ghcr.io/${{ github.repository_owner }}/rainbow-web` and opens the setup wizard in your browser
 
             See [docs/getting-started.md](https://github.com/${{ github.repository }}/blob/${{ env.TAG }}/docs/getting-started.md) for the post-install walkthrough.

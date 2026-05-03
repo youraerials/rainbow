@@ -29,6 +29,14 @@ PRODUCT_PKG="$BUILD_DIR/Rainbow-$VERSION.pkg"
 
 DEV_ID="${DEV_ID:-}"
 
+# Image the installer pulls on the user's Mac. Defaults to the GHCR
+# image for the current release; CI overrides via env to match the
+# tag being built. Local dev .pkg builds get the same reference, so
+# `make pkg` followed by installing the result will pull whichever
+# version of the image is currently published — handy for testing
+# the installer flow against a real registry.
+RAINBOW_WEB_IMAGE="${RAINBOW_WEB_IMAGE:-ghcr.io/youraerials/rainbow-web:$VERSION}"
+
 # ─── Pre-flight ────────────────────────────────────────────────────
 for cmd in pkgbuild productbuild yq; do
     command -v "$cmd" >/dev/null 2>&1 || {
@@ -91,9 +99,16 @@ cp "$SCRIPT_DIR/scripts/lib/fetch-binary.sh" \
    "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/lib/fetch-binary.sh"
 cp "$SCRIPT_DIR/scripts/lib/fetch-all.sh" \
    "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/lib/fetch-all.sh"
-cp "$SCRIPT_DIR/scripts/phase-b-setup.sh" \
-   "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/phase-b-setup.sh"
-chmod +x "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/phase-b-setup.sh"
+PHASE_B_PATH="$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/phase-b-setup.sh"
+cp "$SCRIPT_DIR/scripts/phase-b-setup.sh" "$PHASE_B_PATH"
+# Substitute the GHCR image reference into the copy. The source file
+# carries a __RAINBOW_WEB_IMAGE__ placeholder so the working tree
+# stays runnable in dev (where the orchestrator builds the image
+# locally) — only the .pkg-bound copy gets the registry pin baked in.
+sed -i.bak "s|__RAINBOW_WEB_IMAGE__|$RAINBOW_WEB_IMAGE|g" "$PHASE_B_PATH"
+rm -f "$PHASE_B_PATH.bak"
+chmod +x "$PHASE_B_PATH"
+echo "Pinned rainbow-web image to: $RAINBOW_WEB_IMAGE"
 cp "$SCRIPT_DIR/resources/rocks.rainbow.setup.plist" \
    "$PAYLOAD_DIR/Applications/Rainbow/installer/resources/rocks.rainbow.setup.plist"
 

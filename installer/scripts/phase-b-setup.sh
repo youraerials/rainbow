@@ -38,36 +38,29 @@ fail() {
 
 log "Phase B starting (user=$USER)"
 
-# ─── Build rainbow-web image ──────────────────────────────────────
-toast "Rainbow" "Building Rainbow image (3-5 minutes)"
-
-# Pre-start the build helper (buildkit) with enough headroom for the
-# rainbow-web build. Two reasons we don't rely on the implicit
-# bootstrap inside `container build`:
-#   1. That implicit start has a tight internal timeout — on a fresh
-#      install where the buildkit image (~78 MB) still has to be
-#      pulled, it fails with "timeout: failed to get a connection
-#      to agent socket". `builder start` has no such timeout.
-#   2. The default resource allocation (2 CPU / 2 GB) OOM-kills
-#      `npm ci` mid-install. Our Dockerfile is multi-stage with two
-#      parallel `npm ci` invocations (build deps + runtime deps),
-#      both unpacking the full rainbow-web dep tree (Express + MCP
-#      SDK + Anthropic SDK + React) at once. 6 GB is comfortable.
+# ─── Pull rainbow-web image from GHCR ─────────────────────────────
+# The image is pre-built per-release in CI and pushed to ghcr.io. We
+# used to `container build` it on the user's Mac, but Apple Container
+# 0.11/0.12's buildkit hits a hard ~140s deadline somewhere in the
+# `npm ci` step that we couldn't get around. Pulling a prebuilt image
+# is more reliable, faster (~30 s on a typical connection vs 3-5 min
+# build), and matches what every other service we orchestrate does.
 #
-# Recreate from scratch so resource flags actually take effect — they
-# are honored only at create time. Stop+delete are idempotent (no-op
-# if buildkit is missing or stopped).
-log "Preparing build helper (buildkit) with extra headroom..."
-"$BIN_DIR/container" builder stop   >/dev/null 2>&1 || true
-"$BIN_DIR/container" builder delete >/dev/null 2>&1 || true
-"$BIN_DIR/container" builder start --cpus 4 --memory 6G \
-    >> "$LOG_FILE" 2>&1 || fail "failed to start buildkit"
+# The image reference below is sed-replaced at .pkg build time by
+# installer/build-pkg.sh from $RAINBOW_WEB_IMAGE. Default in dev is
+# ghcr.io/<repo-owner>/rainbow-web:<version>.
+RAINBOW_WEB_IMAGE="__RAINBOW_WEB_IMAGE__"
 
-log "Building rainbow-web image..."
-(
-    cd "$INSTALL_DIR/web"
-    "$BIN_DIR/container" build -t rainbow-web:latest .
-) >> "$LOG_FILE" 2>&1 || fail "rainbow-web build failed"
+toast "Rainbow" "Pulling Rainbow image"
+log "Pulling $RAINBOW_WEB_IMAGE..."
+"$BIN_DIR/container" image pull "$RAINBOW_WEB_IMAGE" \
+    >> "$LOG_FILE" 2>&1 || fail "failed to pull $RAINBOW_WEB_IMAGE"
+
+# Tag it as rainbow-web:latest so the rest of the orchestration (this
+# script's run command, the orchestrator's start_* functions) can
+# reference a stable local name regardless of the registry path.
+"$BIN_DIR/container" image tag "$RAINBOW_WEB_IMAGE" rainbow-web:latest \
+    >> "$LOG_FILE" 2>&1 || fail "failed to tag rainbow-web:latest"
 
 # ─── Setup wizard container ───────────────────────────────────────
 toast "Rainbow" "Starting setup wizard"
