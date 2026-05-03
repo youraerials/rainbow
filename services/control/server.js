@@ -39,6 +39,12 @@ const ORCHESTRATOR = path.join(RAINBOW_ROOT, "services", "orchestrator.sh");
 const ALLOWED_NAME = /^rainbow-[a-z0-9-]+$/;
 const VALID_ACTIONS = new Set(["start", "stop", "restart"]);
 
+// Keychain entries the daemon is allowed to write. Restricting to
+// rainbow-* prefix keeps a compromised setup container from rewriting
+// arbitrary system secrets. Read-back is intentionally not supported —
+// the daemon is write-only for Keychain (no API to fetch values back).
+const KEYCHAIN_NAME = /^rainbow-[a-z0-9-]+$/;
+
 function loadTokenFromKeychain() {
     try {
         const out = execFileSync(
@@ -168,6 +174,126 @@ async function handleAction(action, name) {
     };
 }
 
+// Whitelisted scripts the setup wizard / dashboard may invoke. Path is
+// resolved against RAINBOW_ROOT so the daemon never executes anything
+// outside the project tree, regardless of caller intent.
+const ALLOWED_RUN_TASKS = {
+    "generate-config": "scripts/generate-config.sh",
+    "start-minimum":   "services/orchestrator.sh:minimum",
+    "setup-providers": "services/authentik/setup-providers.sh",
+};
+
+// POST /run/<task> — runs a whitelisted script and streams its stdout +
+// stderr as Server-Sent Events. Used by the setup wizard to surface
+// long-running orchestration progress to the browser. Each line of
+// output becomes a single SSE message; on exit we emit a final
+// `event: done` with the exit code.
+function handleRun(task, res) {
+    const target = ALLOWED_RUN_TASKS[task];
+    if (!target) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: `unknown task: ${task}` }));
+        return;
+    }
+    const [scriptRel, arg] = target.split(":");
+    const scriptPath = path.join(RAINBOW_ROOT, scriptRel);
+    const args = arg ? [scriptPath, arg] : [scriptPath];
+
+    res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+    });
+    res.write(`event: started\ndata: {"task":"${task}"}\n\n`);
+
+    const child = spawn("/bin/bash", args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, RAINBOW_ROOT },
+    });
+    const sendLine = (stream, line) => {
+        if (!line) return;
+        const payload = JSON.stringify({ stream, line });
+        res.write(`event: log\ndata: ${payload}\n\n`);
+    };
+    let stdoutBuf = "";
+    let stderrBuf = "";
+    child.stdout.on("data", (d) => {
+        stdoutBuf += d.toString();
+        let idx;
+        while ((idx = stdoutBuf.indexOf("\n")) >= 0) {
+            sendLine("stdout", stdoutBuf.slice(0, idx));
+            stdoutBuf = stdoutBuf.slice(idx + 1);
+        }
+    });
+    child.stderr.on("data", (d) => {
+        stderrBuf += d.toString();
+        let idx;
+        while ((idx = stderrBuf.indexOf("\n")) >= 0) {
+            sendLine("stderr", stderrBuf.slice(0, idx));
+            stderrBuf = stderrBuf.slice(idx + 1);
+        }
+    });
+    child.on("close", (code) => {
+        // flush partial lines
+        sendLine("stdout", stdoutBuf);
+        sendLine("stderr", stderrBuf);
+        res.write(`event: done\ndata: ${JSON.stringify({ task, code })}\n\n`);
+        res.end();
+    });
+    child.on("error", (err) => {
+        res.write(`event: error\ndata: ${JSON.stringify({ task, error: String(err) })}\n\n`);
+        res.end();
+    });
+}
+
+// PUT /keychain/<service> — store a secret in the user's macOS Keychain
+// under the given service name. Body: { value: "..." }. Used by the
+// rainbow-setup container to persist provision-time secrets without
+// needing direct Keychain access from inside Apple Container's VM.
+async function handleKeychainPut(service, body) {
+    if (!KEYCHAIN_NAME.test(service)) {
+        return {
+            status: 400,
+            body: { error: `service must match ${KEYCHAIN_NAME}` },
+        };
+    }
+    let payload;
+    try {
+        payload = JSON.parse(body);
+    } catch {
+        return { status: 400, body: { error: "body must be JSON" } };
+    }
+    const value = payload && typeof payload.value === "string" ? payload.value : "";
+    if (!value) {
+        return { status: 400, body: { error: "missing 'value' field" } };
+    }
+    return new Promise((resolve) => {
+        const child = spawn(
+            "/usr/bin/security",
+            [
+                "add-generic-password",
+                "-s", service,
+                "-a", "rainbow",
+                "-w", value,
+                "-U",
+            ],
+            { stdio: ["ignore", "pipe", "pipe"] },
+        );
+        let stderr = "";
+        child.stderr.on("data", (d) => (stderr += d.toString()));
+        child.on("error", (err) =>
+            resolve({ status: 500, body: { error: String(err) } }),
+        );
+        child.on("close", (code) =>
+            resolve(
+                code === 0
+                    ? { status: 200, body: { ok: true, service } }
+                    : { status: 500, body: { error: stderr.trim() || `security exit ${code}` } },
+            ),
+        );
+    });
+}
+
 async function handleLogs(name, lines) {
     if (!ALLOWED_NAME.test(name)) {
         return {
@@ -217,6 +343,27 @@ const server = http.createServer(async (req, res) => {
         const result = await handleLogs(decodeURIComponent(name), lines);
         res.writeHead(result.status, { "Content-Type": "application/json" });
         return res.end(JSON.stringify(result.body));
+    }
+
+    // POST /run/<task> — stream output of a whitelisted host script via SSE
+    const runMatch = req.url && req.url.match(/^\/run\/([a-z-]+)$/);
+    if (req.method === "POST" && runMatch) {
+        return handleRun(runMatch[1], res);
+    }
+
+    // PUT /keychain/<service> — write a Keychain secret
+    const keychainMatch = req.url && req.url.match(/^\/keychain\/([^/?]+)$/);
+    if (req.method === "PUT" && keychainMatch) {
+        const [, service] = keychainMatch;
+        const chunks = [];
+        req.on("data", (c) => chunks.push(c));
+        req.on("end", async () => {
+            const body = Buffer.concat(chunks).toString("utf8");
+            const result = await handleKeychainPut(decodeURIComponent(service), body);
+            res.writeHead(result.status, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(result.body));
+        });
+        return;
     }
 
     return fail(res, 404, "no such route");

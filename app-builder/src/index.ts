@@ -5,22 +5,6 @@
  * custom apps via Claude.
  */
 
-fetch("/mcp", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Accept: "application/json, text/event-stream",
-  },
-  body: JSON.stringify({
-    jsonrpc: "2.0",
-    method: "tools/call",
-    id: 2,
-    params: { name: "email.list_mailboxes", arguments: {} },
-  }),
-})
-  .then((r) => r.text())
-  .then(console.log);
-
 import express from "express";
 import { Orchestrator } from "./builder/orchestrator.js";
 import { AppRegistry } from "./registry/app-registry.js";

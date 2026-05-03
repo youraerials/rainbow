@@ -1,39 +1,85 @@
 /**
  * Rainbow Subdomain Manager — Cloudflare Worker
  *
- * Manages *.rainbow.rocks subdomains for Rainbow users.
- * Routes:
- *   POST   /claim          — Claim a subdomain
- *   DELETE /release/:name  — Release a subdomain
- *   GET    /check/:name    — Check subdomain availability
- *   POST   /custom-domain  — Configure a custom domain
- *   GET    /status/:name   — Get subdomain status/health
+ * Provisions everything a Rainbow user needs to run their stack under
+ * `<name>.rainbow.rocks`:
+ *   - A Cloudflare Tunnel on the operator's account (returns credentials)
+ *   - DNS records (apex + wildcard CNAMEs) pointing at the tunnel
+ *   - MX records for Cloudflare Email Routing
+ *   - Catch-all routing rule → shared email-receiver Worker
+ *   - A per-tenant HMAC secret used by the email-receiver Worker to
+ *     authenticate mail forwarded to the user's tunnel
+ *
+ * Public routes:
+ *   GET    /health                — unauth, liveness only
+ *   GET    /check/:name           — is this name available?
+ *   POST   /provision             — full setup (returns tunnel creds)
+ *   DELETE /release/:name         — teardown (auth required)
+ *
+ * Auth: routes that mutate require Bearer API_SECRET. The setup-mode
+ * container on the user's Mac has this secret baked in at install time
+ * (TODO: move to a per-install short-lived token).
  */
 
 import { Hono } from "hono";
 import { verifyBearerToken } from "../shared/auth";
 import { CloudflareApi } from "../shared/cloudflare-api";
 import { validateSubdomain } from "./validation";
-import type { SubdomainClaim, ClaimRequest, CustomDomainRequest } from "./types";
+import type {
+  ProvisionRequest,
+  ProvisionResponse,
+  SubdomainTenant,
+} from "./types";
+
+/**
+ * Canonical list of Rainbow services. Each gets a level-1 CNAME of the
+ * form `<prefix>-<service>.<zone>`. The dashboard apex is created
+ * separately as `<prefix>.<zone>` (no service suffix). Adding a new
+ * service to Rainbow means adding it here AND to the Caddyfile +
+ * cloudflared templates on the user's machine.
+ */
+const RAINBOW_SERVICES = [
+  "auth",
+  "photos",
+  "mail",
+  "webmail",
+  "files",
+  "docs",
+  "docs-sandbox",
+  "media",
+  "api",
+] as const;
 
 type Bindings = {
   SUBDOMAINS: KVNamespace;
-  CLOUDFLARE_API_TOKEN: string;
+  /** Operator's Cloudflare API token — Account:Tunnel:Edit, Zone:DNS:Edit, Zone:Email Routing Rules:Edit. */
+  CLOUDFLARE_OPERATOR_TOKEN: string;
+  /** rainbow.rocks zone ID. */
   CLOUDFLARE_ZONE_ID: string;
-  ALLOWED_PARENT_DOMAIN: string;
+  /** Operator's Cloudflare account ID. */
+  CLOUDFLARE_ACCOUNT_ID: string;
+  /** Shared secret protecting /provision and /release. */
   API_SECRET: string;
+  /** rainbow.rocks. */
+  ALLOWED_PARENT_DOMAIN: string;
+  /** Email-receiver Worker name (the catch-all action target). */
+  EMAIL_RECEIVER_WORKER: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// ─── Auth middleware ───��────────────────────────────────────────
+// ─── Auth middleware (mutating routes only) ─────────────────────
 app.use("*", async (c, next) => {
-  // Allow health check without auth
-  if (c.req.path === "/health") return next();
+  const path = c.req.path;
+  const method = c.req.method;
+  const isPublic =
+    path === "/health" ||
+    (method === "GET" && path.startsWith("/check/"));
+  if (isPublic) return next();
 
   const result = verifyBearerToken(
     c.req.header("Authorization"),
-    c.env.API_SECRET
+    c.env.API_SECRET,
   );
   if (!result.valid) {
     return c.json({ error: result.error }, 401);
@@ -41,18 +87,14 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-// ─── Health check ──────────────────────────────────────────────
+// ─── Liveness ───────────────────────────────────────────────────
 app.get("/health", (c) => c.json({ status: "ok" }));
 
-// ─── Check availability ────────────────────────────────────────
+// ─── Availability check ────────────────────────────────────────
 app.get("/check/:name", async (c) => {
   const name = c.req.param("name").toLowerCase();
-
-  const validation = validateSubdomain(name);
-  if (!validation.valid) {
-    return c.json({ error: validation.error, available: false }, 400);
-  }
-
+  const v = validateSubdomain(name);
+  if (!v.valid) return c.json({ available: false, error: v.error }, 400);
   const existing = await c.env.SUBDOMAINS.get(name);
   return c.json({
     name,
@@ -61,145 +103,172 @@ app.get("/check/:name", async (c) => {
   });
 });
 
-// ─── Get subdomain status ──────────────────────────────────────
-app.get("/status/:name", async (c) => {
-  const name = c.req.param("name").toLowerCase();
-  const data = await c.env.SUBDOMAINS.get(name);
+// ─── Provision a subdomain ─────────────────────────────────────
+// Single endpoint that does everything atomically (best-effort: on partial
+// failure we attempt rollback). The user's setup-mode container calls
+// this once and gets back tunnel credentials + HMAC secret.
+app.post("/provision", async (c) => {
+  const body = await c.req.json<ProvisionRequest>();
+  const name = body.name?.toLowerCase().trim();
+  const ownerEmail = body.ownerEmail?.trim();
 
-  if (!data) {
-    return c.json({ error: "Subdomain not found" }, 404);
+  if (!name || !ownerEmail) {
+    return c.json({ error: "name and ownerEmail are required" }, 400);
+  }
+  const v = validateSubdomain(name);
+  if (!v.valid) return c.json({ error: v.error }, 400);
+  if (!ownerEmail.includes("@")) {
+    return c.json({ error: "ownerEmail must look like an email" }, 400);
   }
 
-  const claim: SubdomainClaim = JSON.parse(data);
-  return c.json({
-    name,
-    domain: `${name}.${c.env.ALLOWED_PARENT_DOMAIN}`,
-    created_at: claim.created_at,
-    last_check: claim.last_check,
-    healthy: claim.healthy,
-  });
-});
+  // Already claimed?
+  const existing = await c.env.SUBDOMAINS.get(name);
+  if (existing !== null) {
+    return c.json({ error: "subdomain already claimed" }, 409);
+  }
 
-// ─── Claim a subdomain ─────────────────────────────────────────
-app.post("/claim", async (c) => {
-  const body = await c.req.json<ClaimRequest>();
+  const baseDomain = `${name}.${c.env.ALLOWED_PARENT_DOMAIN}`;
+  const cf = new CloudflareApi(
+    c.env.CLOUDFLARE_OPERATOR_TOKEN,
+    c.env.CLOUDFLARE_ZONE_ID,
+    c.env.CLOUDFLARE_ACCOUNT_ID,
+  );
 
-  const name = body.name?.toLowerCase();
-  if (!name || !body.tunnel_id || !body.owner_email) {
+  // Track everything we create so we can roll back on failure.
+  const created: {
+    tunnelId?: string;
+    dnsRecordIds: string[];
+    mxRecordIds: string[];
+  } = { dnsRecordIds: [], mxRecordIds: [] };
+  const rollback = async (reason: string) => {
+    console.error(`[provision] rolling back ${name}: ${reason}`);
+    for (const id of created.dnsRecordIds) {
+      await cf.deleteDnsRecord(id);
+    }
+    for (const id of created.mxRecordIds) {
+      await cf.deleteDnsRecord(id);
+    }
+    if (created.tunnelId) {
+      await cf.deleteTunnel(created.tunnelId);
+    }
+  };
+
+  // 1. Tunnel
+  const tunnel = await cf.createTunnel(`rainbow-${name}`);
+  if (!tunnel.success || !tunnel.info || !tunnel.credentials) {
     return c.json(
-      { error: "Missing required fields: name, tunnel_id, owner_email" },
-      400
+      { error: `tunnel creation failed: ${tunnel.error ?? "unknown"}` },
+      502,
+    );
+  }
+  created.tunnelId = tunnel.info.id;
+
+  // 2. DNS — one level-1 CNAME per Rainbow service plus the dashboard
+  //    apex. We can't use a wildcard at level 2 because Cloudflare's
+  //    Universal SSL only covers level-1 subdomains for free.
+  const cnames = await cf.createTunnelHostnames({
+    prefix: name,
+    zone: c.env.ALLOWED_PARENT_DOMAIN,
+    services: [...RAINBOW_SERVICES],
+    tunnelId: tunnel.info.id,
+  });
+  created.dnsRecordIds.push(...cnames.recordIds);
+  if (cnames.errors.length > 0) {
+    await rollback(`DNS errors: ${JSON.stringify(cnames.errors)}`);
+    return c.json(
+      { error: "DNS provisioning failed", details: cnames.errors },
+      502,
     );
   }
 
-  const validation = validateSubdomain(name);
-  if (!validation.valid) {
-    return c.json({ error: validation.error }, 400);
+  // 3. MX records on the tenant's namespace so Cloudflare Email Routing
+  //    accepts mail for `<anything>@<name>.rainbow.rocks`. Email Routing
+  //    on the parent zone is a one-time setup the operator did already;
+  //    here we just bind the subdomain into it via MX.
+  const mx = await cf.addCloudflareMxRecords(baseDomain);
+  created.mxRecordIds.push(...mx.recordIds);
+  if (mx.errors.length > 0) {
+    await rollback(`MX errors: ${JSON.stringify(mx.errors)}`);
+    return c.json(
+      { error: "MX record provisioning failed", details: mx.errors },
+      502,
+    );
   }
 
-  // Check availability
-  const existing = await c.env.SUBDOMAINS.get(name);
-  if (existing !== null) {
-    return c.json({ error: "Subdomain already claimed" }, 409);
+  // 4. SPF — best-effort. Failure not fatal. Track its record ID with the
+  //    other DNS records so /release cleans it up.
+  const spf = await cf.addEmailRoutingSpf(baseDomain);
+  if (spf.success && spf.recordId) {
+    created.dnsRecordIds.push(spf.recordId);
   }
 
-  const baseDomain = `${name}.${c.env.ALLOWED_PARENT_DOMAIN}`;
-  const cfApi = new CloudflareApi(
-    c.env.CLOUDFLARE_API_TOKEN,
-    c.env.CLOUDFLARE_ZONE_ID
-  );
+  // 5. Per-tenant HMAC secret (32 bytes hex) for the email-receiver
+  //    Worker → tunnel handoff. Returned to the caller once and never
+  //    again; they're responsible for storing it locally.
+  const inboundSecret = randomHex(32);
 
-  // Create wildcard DNS records for all service subdomains
-  const dnsResult = await cfApi.createWildcardCname(baseDomain, body.tunnel_id);
-
-  if (!dnsResult.success) {
-    return c.json({ error: "Failed to create DNS records" }, 500);
-  }
-
-  // Store claim in KV
-  const claim: SubdomainClaim = {
-    tunnel_id: body.tunnel_id,
-    owner_email: body.owner_email,
-    dns_record_id: "", // Multiple records created
-    created_at: new Date().toISOString(),
+  const tenant: SubdomainTenant = {
+    name,
+    ownerEmail,
+    tunnelId: tunnel.info.id,
+    tunnelName: tunnel.info.name,
+    dnsRecordIds: created.dnsRecordIds,
+    mxRecordIds: created.mxRecordIds,
+    inboundMailSecret: inboundSecret,
+    createdAt: new Date().toISOString(),
   };
 
-  await c.env.SUBDOMAINS.put(name, JSON.stringify(claim));
+  await c.env.SUBDOMAINS.put(name, JSON.stringify(tenant));
 
-  const subdomains: Record<string, string> = {};
-  for (const prefix of ["app", "photos", "mail", "files", "docs", "media", "auth", "api"]) {
-    subdomains[prefix] = `${prefix}.${baseDomain}`;
-  }
+  // The catch-all rule pointing at the shared email-receiver Worker is
+  // set ONCE per zone (operator-side bootstrap, not per-tenant). We don't
+  // touch it here; the email-receiver Worker reads SUBDOMAINS KV to know
+  // where each incoming message should go.
 
-  return c.json({
+  const response: ProvisionResponse = {
     success: true,
     domain: baseDomain,
-    subdomains,
-    dns_records_created: dnsResult.records.length,
-  });
+    serviceHostnames: cnames.hostnames,
+    tunnel: {
+      id: tunnel.info.id,
+      name: tunnel.info.name,
+      credentials: tunnel.credentials,
+    },
+    inboundMailSecret: inboundSecret,
+  };
+  return c.json(response);
 });
 
-// ─── Release a subdomain ─��─────────────────────────────────────
+// ─── Release a subdomain ──────────────────────────────────────
 app.delete("/release/:name", async (c) => {
   const name = c.req.param("name").toLowerCase();
+  const raw = await c.env.SUBDOMAINS.get(name);
+  if (!raw) return c.json({ error: "not found" }, 404);
+  const tenant = JSON.parse(raw) as SubdomainTenant;
 
-  const existing = await c.env.SUBDOMAINS.get(name);
-  if (existing === null) {
-    return c.json({ error: "Subdomain not found" }, 404);
-  }
-
-  const baseDomain = `${name}.${c.env.ALLOWED_PARENT_DOMAIN}`;
-  const cfApi = new CloudflareApi(
-    c.env.CLOUDFLARE_API_TOKEN,
-    c.env.CLOUDFLARE_ZONE_ID
+  const cf = new CloudflareApi(
+    c.env.CLOUDFLARE_OPERATOR_TOKEN,
+    c.env.CLOUDFLARE_ZONE_ID,
+    c.env.CLOUDFLARE_ACCOUNT_ID,
   );
 
-  // Delete all DNS records for this subdomain
-  const records = await cfApi.listDnsRecords();
-  for (const record of records) {
-    if (record.name === baseDomain || record.name.endsWith(`.${baseDomain}`)) {
-      await cfApi.deleteDnsRecord(record.id);
-    }
+  for (const id of [...tenant.dnsRecordIds, ...tenant.mxRecordIds]) {
+    await cf.deleteDnsRecord(id);
   }
-
+  await cf.deleteTunnel(tenant.tunnelId);
   await c.env.SUBDOMAINS.delete(name);
+
   return c.json({ success: true, released: name });
 });
 
-// ─── Configure custom domain ───────────────────────────────────
-app.post("/custom-domain", async (c) => {
-  const body = await c.req.json<CustomDomainRequest>();
+// ─── Helpers ──────────────────────────────────────────────────
 
-  if (!body.domain || !body.tunnel_id || !body.owner_email) {
-    return c.json(
-      { error: "Missing required fields: domain, tunnel_id, owner_email" },
-      400
-    );
-  }
-
-  // For custom domains, the user manages their own DNS.
-  // We just store the mapping so we know about it.
-  await c.env.SUBDOMAINS.put(
-    `custom:${body.domain}`,
-    JSON.stringify({
-      tunnel_id: body.tunnel_id,
-      owner_email: body.owner_email,
-      dns_record_id: "",
-      created_at: new Date().toISOString(),
-    } satisfies SubdomainClaim)
-  );
-
-  return c.json({
-    success: true,
-    domain: body.domain,
-    instructions: {
-      message: "Add these CNAME records to your DNS provider:",
-      records: [
-        { type: "CNAME", name: body.domain, value: `${body.tunnel_id}.cfargotunnel.com` },
-        { type: "CNAME", name: `*.${body.domain}`, value: `${body.tunnel_id}.cfargotunnel.com` },
-      ],
-    },
-  });
-});
+function randomHex(bytes: number): string {
+  const buf = new Uint8Array(bytes);
+  crypto.getRandomValues(buf);
+  return Array.from(buf)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 export default app;
