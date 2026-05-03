@@ -32,9 +32,22 @@ app-builder/apps/
 backups/restic-env.sh
 
 # Installer build artifacts
+installer/build/
 installer/components/
 installer/gui/.build/
 *.pkg
+
+# Compiled host control daemon (built by installer/build-pkg.sh +
+# release workflow; the source of truth is services/control/Daemon.swift)
+services/control/Rainbow-Control-Daemon
+
+# Brand site Wrangler cache
+website/.wrangler/
+
+# Setup-state JSON (per-user wizard progress, lives under user's
+# Library — but in case anyone runs the wizard pointing the state path
+# inside the repo)
+setup-state.json
 
 # Node.js
 node_modules/

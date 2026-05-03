@@ -1,118 +1,140 @@
 #!/usr/bin/env bash
 #
 # postinstall.sh — Runs after the .pkg copies the Rainbow payload to
-# /Applications/Rainbow/. This is what stands up enough infrastructure
-# for the web wizard to take over: Homebrew + container runtime + host
-# control daemon + the rainbow-web image, then opens the user's browser
-# at the wizard.
+# /Applications/Rainbow/. Sets up everything the wizard needs without
+# requiring Homebrew or Xcode Command Line Tools — every host binary
+# we depend on is fetched directly from upstream GitHub releases.
 #
-# The .pkg's progress bar is tied to file copying, so postinstall logs
-# are mostly invisible. We tee everything to /tmp/rainbow-install.log
-# and pop a Notification Center toast when each major phase finishes
-# so the user has SOME signal during the long bits.
+# Sequence:
+#   1. Fetch host binaries (container, yq, jq, cloudflared, restic) into
+#      /Applications/Rainbow/bin via curl + signature/checksum verify.
+#   2. Initialize Apple Container (one-time kernel install).
+#   3. Install + start the precompiled host control daemon.
+#   4. Build the rainbow-web image inside the container VM.
+#   5. Spin up the rainbow-setup container and open the wizard in the
+#      user's browser.
 #
-# Anything user-specific (Keychain entries, ~/Library paths) needs to
-# happen as the actual user — postinstall runs as root via the .pkg, so
-# we use `sudo -u $USER` for those.
+# The .pkg progress bar tracks file copying; this postinstall takes
+# ~2-5 minutes more for the binary downloads + image build, so we tee
+# everything to /tmp/rainbow-install.log and emit Notification Center
+# toasts at each major phase.
 
 set -euo pipefail
 
 INSTALL_DIR="/Applications/Rainbow"
+BIN_DIR="$INSTALL_DIR/bin"
 LOG_FILE="/tmp/rainbow-install.log"
 PRIMARY_USER="${USER:-$(stat -f '%Su' /dev/console)}"
 USER_HOME=$(eval echo "~$PRIMARY_USER")
 
+# Helpers
 log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 toast() {
-    local title="$1" body="$2"
     sudo -u "$PRIMARY_USER" osascript \
-        -e "display notification \"$body\" with title \"$title\"" \
+        -e "display notification \"$2\" with title \"$1\"" \
         2>/dev/null || true
 }
+fail() {
+    log "FATAL: $*"
+    toast "Rainbow" "Install failed — see /tmp/rainbow-install.log"
+    exit 1
+}
 
-log "Rainbow postinstall starting (user=$PRIMARY_USER)…"
-toast "Rainbow" "Setting up Homebrew and container runtime…"
+log "Rainbow postinstall starting (user=$PRIMARY_USER)"
 
-# ─── Homebrew ───────────────────────────────────────────────────
-# Run as the user — Homebrew is a per-user install on Apple Silicon
-# (lives in /opt/homebrew, owned by the first user who installed it).
-if ! sudo -u "$PRIMARY_USER" /bin/bash -c 'command -v brew' >/dev/null 2>&1; then
-    log "Installing Homebrew…"
-    NONINTERACTIVE=1 sudo -u "$PRIMARY_USER" /bin/bash -c \
-        '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"' \
-        >> "$LOG_FILE" 2>&1
+# Source the binary registry + fetch helper. These live alongside this
+# script in the .pkg payload at /Applications/Rainbow/installer/scripts.
+SCRIPTS_DIR="$INSTALL_DIR/installer/scripts"
+if [ ! -f "$SCRIPTS_DIR/lib/fetch-binary.sh" ]; then
+    fail "fetch-binary.sh missing — payload incomplete"
 fi
+# shellcheck disable=SC1091
+source "$SCRIPTS_DIR/lib/fetch-binary.sh"
+# shellcheck disable=SC1091
+source "$SCRIPTS_DIR/binaries.lock.sh"
 
-# Inherit the shellenv so subsequent commands find brew binaries.
-eval "$(sudo -u "$PRIMARY_USER" /opt/homebrew/bin/brew shellenv)"
-log "Homebrew: $(brew --version | head -1)"
+mkdir -p "$BIN_DIR"
+chown -R "$PRIMARY_USER" "$INSTALL_DIR"
 
-# ─── Apple Container + supporting CLIs ──────────────────────────
-log "Installing Apple Container + tooling…"
-sudo -u "$PRIMARY_USER" /opt/homebrew/bin/brew install \
-    container yq jq cloudflared restic >> "$LOG_FILE" 2>&1
+toast "Rainbow" "Fetching tools (~110 MB, takes a couple of minutes)"
 
-# `container system start` needs to run as the user (not root) so it
-# claims the user's launchd domain. The first run installs the kernel.
-log "Starting Apple Container system…"
-sudo -u "$PRIMARY_USER" /opt/homebrew/bin/container system start \
-    --enable-kernel-install >> "$LOG_FILE" 2>&1 || true
-for _ in $(seq 1 15); do
-    if sudo -u "$PRIMARY_USER" /opt/homebrew/bin/container system status >/dev/null 2>&1; then
+# ─── Fetch host binaries ────────────────────────────────────────
+log "Fetching host binaries…"
+sudo -u "$PRIMARY_USER" -E bash -c "
+    source '$SCRIPTS_DIR/lib/fetch-binary.sh'
+    source '$SCRIPTS_DIR/binaries.lock.sh'
+    export RAINBOW_BIN_DIR='$BIN_DIR'
+    fetch_binary container   '\$CONTAINER_VERSION'   '\$CONTAINER_URL'   '\$CONTAINER_MEMBER'   '\$CONTAINER_SHA256'
+    fetch_binary yq          '\$YQ_VERSION'          '\$YQ_URL'          '\$YQ_MEMBER'          '\$YQ_SHA256'
+    fetch_binary jq          '\$JQ_VERSION'          '\$JQ_URL'          '\$JQ_MEMBER'          '\$JQ_SHA256'
+    fetch_binary cloudflared '\$CLOUDFLARED_VERSION' '\$CLOUDFLARED_URL' '\$CLOUDFLARED_MEMBER' '\$CLOUDFLARED_SHA256'
+    fetch_binary restic      '\$RESTIC_VERSION'      '\$RESTIC_URL'      '\$RESTIC_MEMBER'      '\$RESTIC_SHA256'
+" >> "$LOG_FILE" 2>&1 || fail "binary fetch step failed — see log"
+
+export PATH="$BIN_DIR:$PATH"
+
+toast "Rainbow" "Initializing container runtime"
+
+# ─── Initialize Apple Container ─────────────────────────────────
+log "Starting container system…"
+sudo -u "$PRIMARY_USER" "$BIN_DIR/container" system start --enable-kernel-install \
+    >> "$LOG_FILE" 2>&1 || true
+for _ in $(seq 1 20); do
+    if sudo -u "$PRIMARY_USER" "$BIN_DIR/container" system status >/dev/null 2>&1; then
         break
     fi
     sleep 2
 done
+sudo -u "$PRIMARY_USER" "$BIN_DIR/container" system status >/dev/null 2>&1 \
+    || fail "container system never came up"
 
-toast "Rainbow" "Installing host control daemon…"
+toast "Rainbow" "Installing host control daemon"
 
-# ─── Host control daemon ────────────────────────────────────────
-# Lets the setup wizard (running in a container) reach back into the
-# host to mint Keychain secrets and run scripts.
+# ─── Install host control daemon ────────────────────────────────
+# The daemon binary is precompiled by the release workflow and ships
+# in the .pkg payload at $BIN_DIR/Rainbow-Control-Daemon.
 log "Installing host control daemon…"
-sudo -u "$PRIMARY_USER" bash "$INSTALL_DIR/services/control/install.sh" \
-    >> "$LOG_FILE" 2>&1
+sudo -u "$PRIMARY_USER" -E bash -c "
+    export RAINBOW_BIN_DIR='$BIN_DIR'
+    bash '$INSTALL_DIR/services/control/install.sh'
+" >> "$LOG_FILE" 2>&1 || fail "control daemon install failed"
 
-toast "Rainbow" "Pulling Rainbow image (this can take a few minutes)…"
+toast "Rainbow" "Building Rainbow image (3-5 minutes)"
 
-# ─── Pull the rainbow-web image ─────────────────────────────────
-# Same image runs in two modes: setup mode (RAINBOW_SETUP_MODE=1, no
-# OIDC, only /api/setup/*) and normal mode (full stack, requires
-# Authentik). Pulling it once here is enough.
-log "Pulling rainbow-web image…"
-# In production this comes from a registry. For development we build
-# from the source we just installed.
-sudo -u "$PRIMARY_USER" bash -c "
+# ─── Build rainbow-web image ────────────────────────────────────
+# Pure container-side build — Apple Container's VM pulls node:22-alpine
+# from Docker Hub and runs npm ci + tsc inside. The user's host doesn't
+# need Node or any build tooling.
+log "Building rainbow-web image…"
+sudo -u "$PRIMARY_USER" -E bash -c "
+    export PATH='$BIN_DIR:\$PATH'
     cd '$INSTALL_DIR/web'
-    /opt/homebrew/bin/container build -t rainbow-web:latest .
-" >> "$LOG_FILE" 2>&1
+    container build -t rainbow-web:latest .
+" >> "$LOG_FILE" 2>&1 || fail "rainbow-web build failed"
 
-# ─── Make sure user-side dirs exist for bind-mounts ─────────────
+toast "Rainbow" "Starting setup wizard"
+
+# ─── Bind-mount dirs + start setup container ────────────────────
 sudo -u "$PRIMARY_USER" mkdir -p \
     "$USER_HOME/Library/Application Support/Rainbow/setup" \
     "$USER_HOME/.cloudflared"
 
-toast "Rainbow" "Starting setup wizard…"
-
-# ─── Start the rainbow-setup container ──────────────────────────
-log "Starting setup wizard container…"
 SUBDOMAIN_WORKER_URL="${RAINBOW_SUBDOMAIN_WORKER_URL:-https://rainbow-subdomain-manager.misteranderson.workers.dev}"
 SUBDOMAIN_API_SECRET="${RAINBOW_SUBDOMAIN_API_SECRET:-}"
 CONTROL_TOKEN=$(sudo -u "$PRIMARY_USER" /usr/bin/security find-generic-password \
     -s rainbow-control-token -w 2>/dev/null || echo "")
 
 if [ -z "$SUBDOMAIN_API_SECRET" ]; then
-    log "WARN: RAINBOW_SUBDOMAIN_API_SECRET not in env — wizard will run but provision will fail. Set this in your .pkg's payload at build time, or have the user paste it once during setup."
+    log "WARN: RAINBOW_SUBDOMAIN_API_SECRET not in env — wizard will run, but provision will return 'not configured'."
 fi
 
-# Frontend network is shared with all rainbow-* containers — keeps
-# host.docker.internal routing consistent across the whole stack.
-sudo -u "$PRIMARY_USER" /opt/homebrew/bin/container network create frontend \
+log "Starting setup wizard container…"
+sudo -u "$PRIMARY_USER" "$BIN_DIR/container" network create frontend \
     >/dev/null 2>&1 || true
-sudo -u "$PRIMARY_USER" /opt/homebrew/bin/container delete --force \
-    rainbow-setup >/dev/null 2>&1 || true
+sudo -u "$PRIMARY_USER" "$BIN_DIR/container" delete --force rainbow-setup \
+    >/dev/null 2>&1 || true
 
-sudo -u "$PRIMARY_USER" /opt/homebrew/bin/container run -d --name rainbow-setup \
+sudo -u "$PRIMARY_USER" "$BIN_DIR/container" run -d --name rainbow-setup \
     --network frontend \
     --env RAINBOW_SETUP_MODE=1 \
     --env "RAINBOW_SUBDOMAIN_WORKER_URL=$SUBDOMAIN_WORKER_URL" \
@@ -124,34 +146,26 @@ sudo -u "$PRIMARY_USER" /opt/homebrew/bin/container run -d --name rainbow-setup 
     --volume "$USER_HOME/.cloudflared:/var/lib/rainbow/cloudflared" \
     --volume "$INSTALL_DIR/dashboard/dist:/usr/share/web/dashboard:ro" \
     --volume "$INSTALL_DIR:$INSTALL_DIR" \
-    rainbow-web:latest >> "$LOG_FILE" 2>&1
+    rainbow-web:latest >> "$LOG_FILE" 2>&1 \
+    || fail "setup container failed to start"
 
-# Wait for the container to assign an IP and start listening.
+# Wait for an IP
 SETUP_IP=""
 for _ in $(seq 1 20); do
-    SETUP_IP=$(sudo -u "$PRIMARY_USER" /opt/homebrew/bin/container inspect rainbow-setup \
-        2>/dev/null | /opt/homebrew/bin/yq -p=json '.[0].networks[0].ipv4Address // ""' \
+    SETUP_IP=$(sudo -u "$PRIMARY_USER" "$BIN_DIR/container" inspect rainbow-setup \
+        2>/dev/null | "$BIN_DIR/yq" -p=json '.[0].networks[0].ipv4Address // ""' \
         2>/dev/null | sed 's|/.*||')
     if [ -n "$SETUP_IP" ]; then break; fi
     sleep 1
 done
+[ -n "$SETUP_IP" ] || fail "setup container never got an IP"
 
-if [ -z "$SETUP_IP" ]; then
-    log "ERROR: setup container failed to come up — see logs"
-    toast "Rainbow" "Setup didn't start. See /tmp/rainbow-install.log"
-    exit 1
-fi
-
-# ─── Hand off to the wizard ─────────────────────────────────────
 WIZARD_URL="http://$SETUP_IP:3000/"
-log "Wizard reachable at $WIZARD_URL"
-toast "Rainbow" "Setup is ready — opening your browser."
-sudo -u "$PRIMARY_USER" /usr/bin/open "$WIZARD_URL"
-
-# Stash the URL in a known location so the user can reopen it later
-# without digging through container inspect output.
 echo "$WIZARD_URL" > "$INSTALL_DIR/.wizard-url"
 chmod 644 "$INSTALL_DIR/.wizard-url"
 
 log "Postinstall complete. Wizard at $WIZARD_URL"
+toast "Rainbow" "Setup is ready — opening your browser."
+sudo -u "$PRIMARY_USER" /usr/bin/open "$WIZARD_URL"
+
 exit 0

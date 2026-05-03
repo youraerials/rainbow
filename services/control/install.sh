@@ -2,9 +2,17 @@
 #
 # install.sh — Install the Rainbow control daemon on the macOS host.
 #
-# Provisions a shared bearer token in macOS Keychain, renders the launchd
-# plist with absolute paths, and loads it. The web tier reads the same
-# token from Keychain and uses it as the Bearer for /restart, /logs, etc.
+# Provisions a shared bearer token in macOS Keychain, points launchd at
+# the precompiled Swift daemon binary, loads it. The web tier reads the
+# same token from Keychain and uses it as the Bearer for /restart, /run,
+# /keychain etc.
+#
+# Compiled binary location preference, in order:
+#   1. $RAINBOW_BIN_DIR/Rainbow-Control-Daemon (set by the .pkg postinstall
+#      to /Applications/Rainbow/bin/)
+#   2. <repo>/services/control/Rainbow-Control-Daemon (compiled in-place
+#      during dev with `swiftc -O Daemon.swift -o Rainbow-Control-Daemon`)
+#   3. Compile on-demand via swiftc if it's available
 #
 # Idempotent: re-running upgrades the plist and re-loads.
 
@@ -25,18 +33,30 @@ if ! security find-generic-password -s rainbow-control-token -a rainbow -w >/dev
         -w "$(openssl rand -hex 32)" -U
 fi
 
-# ─── Find node binary ────────────────────────────────────────────
-NODE_BIN=$(command -v node || true)
-if [ -z "$NODE_BIN" ]; then
-    echo "ERROR: node not found in PATH; install with 'brew install node'" >&2
+# ─── Locate or build the daemon binary ───────────────────────────
+DAEMON_BIN=""
+if [ -n "${RAINBOW_BIN_DIR:-}" ] && [ -x "$RAINBOW_BIN_DIR/Rainbow-Control-Daemon" ]; then
+    DAEMON_BIN="$RAINBOW_BIN_DIR/Rainbow-Control-Daemon"
+elif [ -x "$SCRIPT_DIR/Rainbow-Control-Daemon" ]; then
+    DAEMON_BIN="$SCRIPT_DIR/Rainbow-Control-Daemon"
+elif command -v swiftc >/dev/null 2>&1; then
+    echo "[control-install] compiling Daemon.swift..."
+    swiftc -O "$SCRIPT_DIR/Daemon.swift" -o "$SCRIPT_DIR/Rainbow-Control-Daemon"
+    DAEMON_BIN="$SCRIPT_DIR/Rainbow-Control-Daemon"
+else
+    echo "ERROR: no Rainbow-Control-Daemon binary found and swiftc unavailable." >&2
+    echo "  Looked at:" >&2
+    echo "    \$RAINBOW_BIN_DIR/Rainbow-Control-Daemon" >&2
+    echo "    $SCRIPT_DIR/Rainbow-Control-Daemon" >&2
     exit 1
 fi
+echo "[control-install] using daemon binary: $DAEMON_BIN"
 
 # ─── Render plist ────────────────────────────────────────────────
 mkdir -p "$LAUNCHD_DIR"
 mkdir -p "$HOME/Library/Logs"
 sed \
-    -e "s|/usr/local/bin/node|${NODE_BIN}|" \
+    -e "s|__RAINBOW_DAEMON_BIN__|${DAEMON_BIN}|" \
     -e "s|__RAINBOW_ROOT__|${PROJECT_ROOT}|g" \
     -e "s|__RAINBOW_HOME__|${HOME}|g" \
     "$SCRIPT_DIR/launchd/rocks.rainbow.control.plist" > "$LAUNCHD_PLIST"

@@ -7,14 +7,13 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/node</string>
-        <string>__RAINBOW_ROOT__/services/control/server.js</string>
+        <string>__RAINBOW_DAEMON_BIN__</string>
     </array>
 
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>/Applications/Rainbow/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>RAINBOW_CONTROL_PORT</key>
         <string>9001</string>
         <key>RAINBOW_ROOT</key>

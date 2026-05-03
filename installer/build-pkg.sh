@@ -63,6 +63,13 @@ RSYNC_EXCLUDES=(
     --exclude="*.tmp"
     --exclude="test"
     --exclude=".DS_Store"
+    --exclude="Rainbow-Control-Daemon"  # rebuilt below
+    --exclude=".build"                  # Swift / SPM build artifacts
+    --exclude="build"                   # installer's own build dir
+    --exclude="*.log"
+    --exclude=".env"
+    --exclude=".env.local"
+    --exclude="package-lock.json"       # not needed at runtime; saves a few MB
 )
 for dir in cli config scripts services cloudflare web app-builder backups docs website; do
     if [ -d "$PROJECT_ROOT/$dir" ]; then
@@ -70,6 +77,25 @@ for dir in cli config scripts services cloudflare web app-builder backups docs w
             "$PROJECT_ROOT/$dir/" "$PAYLOAD_DIR/Applications/Rainbow/$dir/"
     fi
 done
+
+# postinstall.sh sources two helper files from the install dir at
+# runtime — ship just those, not the whole installer/ tree (which has
+# build artifacts, the brand site's installer chrome HTML, etc.).
+mkdir -p "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/lib"
+cp "$SCRIPT_DIR/scripts/binaries.lock.sh" \
+   "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/binaries.lock.sh"
+cp "$SCRIPT_DIR/scripts/lib/fetch-binary.sh" \
+   "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/lib/fetch-binary.sh"
+
+# Compile the host control daemon (Swift) and ship the binary in the
+# payload's bin/ directory. Drops the Node dependency for the user's
+# Mac — Apple ships the Swift runtime, the compiler is only needed
+# here at build time.
+echo "Compiling host control daemon (Swift)…"
+mkdir -p "$PAYLOAD_DIR/Applications/Rainbow/bin"
+swiftc -O "$PROJECT_ROOT/services/control/Daemon.swift" \
+    -o "$PAYLOAD_DIR/Applications/Rainbow/bin/Rainbow-Control-Daemon"
+chmod +x "$PAYLOAD_DIR/Applications/Rainbow/bin/Rainbow-Control-Daemon"
 
 # Pre-built dashboard/dist — needed for the setup wizard to render
 # without an npm step. Rebuild it now if missing.

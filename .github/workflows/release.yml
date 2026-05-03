@@ -61,7 +61,12 @@ jobs:
           npm ci
           npm run build
 
-      - name: Build .pkg
+      - name: Verify Swift toolchain
+        run: |
+          swift --version
+          swiftc --version
+
+      - name: Build .pkg (compiles Swift daemon + bundles dashboard)
         env:
           RAINBOW_VERSION: ${{ env.VERSION }}
         run: |
