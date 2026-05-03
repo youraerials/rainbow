@@ -60,16 +60,10 @@ toast "Rainbow" "Fetching tools (~110 MB, takes a couple of minutes)"
 
 # ─── Fetch host binaries ────────────────────────────────────────
 log "Fetching host binaries…"
-sudo -u "$PRIMARY_USER" -E bash -c "
-    source '$SCRIPTS_DIR/lib/fetch-binary.sh'
-    source '$SCRIPTS_DIR/binaries.lock.sh'
-    export RAINBOW_BIN_DIR='$BIN_DIR'
-    fetch_binary container   '\$CONTAINER_VERSION'   '\$CONTAINER_URL'   '\$CONTAINER_MEMBER'   '\$CONTAINER_SHA256'
-    fetch_binary yq          '\$YQ_VERSION'          '\$YQ_URL'          '\$YQ_MEMBER'          '\$YQ_SHA256'
-    fetch_binary jq          '\$JQ_VERSION'          '\$JQ_URL'          '\$JQ_MEMBER'          '\$JQ_SHA256'
-    fetch_binary cloudflared '\$CLOUDFLARED_VERSION' '\$CLOUDFLARED_URL' '\$CLOUDFLARED_MEMBER' '\$CLOUDFLARED_SHA256'
-    fetch_binary restic      '\$RESTIC_VERSION'      '\$RESTIC_URL'      '\$RESTIC_MEMBER'      '\$RESTIC_SHA256'
-" >> "$LOG_FILE" 2>&1 || fail "binary fetch step failed — see log"
+sudo -u "$PRIMARY_USER" \
+    RAINBOW_BIN_DIR="$BIN_DIR" \
+    bash "$SCRIPTS_DIR/lib/fetch-all.sh" \
+    >> "$LOG_FILE" 2>&1 || fail "binary fetch step failed — see log"
 
 export PATH="$BIN_DIR:$PATH"
 

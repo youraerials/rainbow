@@ -86,6 +86,8 @@ cp "$SCRIPT_DIR/scripts/binaries.lock.sh" \
    "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/binaries.lock.sh"
 cp "$SCRIPT_DIR/scripts/lib/fetch-binary.sh" \
    "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/lib/fetch-binary.sh"
+cp "$SCRIPT_DIR/scripts/lib/fetch-all.sh" \
+   "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/lib/fetch-all.sh"
 
 # Embed the operator's subdomain-manager API secret if the build
 # environment provides one. This is the bearer token postinstall will

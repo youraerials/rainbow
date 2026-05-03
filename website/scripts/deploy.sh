@@ -8,9 +8,15 @@
 #   3. Optionally configures the custom domain (rainbow.rocks)
 #
 # Usage:
-#   ./website/scripts/deploy.sh                  # Deploy to production
-#   ./website/scripts/deploy.sh --preview        # Deploy to a preview URL
-#   ./website/scripts/deploy.sh --setup-domain   # Configure custom domain (one-time)
+#   ./website/scripts/deploy.sh                            # Deploy to production
+#   ./website/scripts/deploy.sh --preview                  # Deploy to a preview URL
+#   ./website/scripts/deploy.sh --setup-domain             # Configure custom domain (one-time)
+#   ./website/scripts/deploy.sh --skip-update-download     # Skip syncing the #download metadata
+#
+# By default deploy.sh runs ./scripts/update-download.sh first to pull
+# the latest release info from GitHub and rewrite the #download section
+# of index.html. Use --skip-update-download for dev iterations where
+# the metadata isn't changing.
 #
 # Requirements:
 #   - npx + Node.js (for wrangler) -- comes free with the rainbow installer
@@ -27,11 +33,13 @@ DOMAIN="rainbow.rocks"
 
 PREVIEW=false
 SETUP_DOMAIN=false
+SKIP_UPDATE=false
 
 for arg in "$@"; do
     case "$arg" in
-        --preview)       PREVIEW=true ;;
-        --setup-domain)  SETUP_DOMAIN=true ;;
+        --preview)               PREVIEW=true ;;
+        --setup-domain)          SETUP_DOMAIN=true ;;
+        --skip-update-download)  SKIP_UPDATE=true ;;
         --help|-h)
             sed -n '1,/^set -/p' "$0" | sed 's/^# \?//' | head -n -1
             exit 0
@@ -80,6 +88,20 @@ if [ ! -f "$SITE_DIR/index.html" ]; then
     exit 1
 fi
 ok "Site files validated"
+
+# ─── Sync the #download metadata with the latest GH release ──────
+# Idempotent — re-running on the same release produces no diff. Skip
+# with --skip-update-download for dev iterations where you don't want
+# to touch index.html (CSS-only changes, etc.).
+if $SKIP_UPDATE; then
+    info "Skipping update-download (--skip-update-download)"
+else
+    info "Syncing #download metadata with latest GitHub release..."
+    if ! bash "$SCRIPT_DIR/update-download.sh"; then
+        err "update-download.sh failed — re-run with --skip-update-download to deploy anyway."
+        exit 1
+    fi
+fi
 
 # ─── Ensure Pages project exists ─────────────────────────────────
 # wrangler pages deploy refuses to auto-create the project in

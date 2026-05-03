@@ -19,6 +19,12 @@ on:
 permissions:
   contents: write   # creating releases + uploading assets
 
+# Force checkout, setup-node, action-gh-release etc. onto the Node 24
+# runtime ahead of GitHub's June 2026 deprecation of Node 20. Drop this
+# env var once Node 24 is the runner default.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   release:
     runs-on: macos-latest
