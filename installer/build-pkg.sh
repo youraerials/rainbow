@@ -79,16 +79,23 @@ for dir in cli config scripts services cloudflare web app-builder backups docs w
     fi
 done
 
-# postinstall.sh sources two helper files from the install dir at
-# runtime — ship just those, not the whole installer/ tree (which has
-# build artifacts, the brand site's installer chrome HTML, etc.).
+# postinstall.sh sources helper files at runtime, and the LaunchAgent
+# it bootstraps points at /Applications/Rainbow/installer/scripts/
+# phase-b-setup.sh — ship just those, not the whole installer/ tree
+# (which has build artifacts, the brand site's installer chrome, etc.).
 mkdir -p "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/lib"
+mkdir -p "$PAYLOAD_DIR/Applications/Rainbow/installer/resources"
 cp "$SCRIPT_DIR/scripts/binaries.lock.sh" \
    "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/binaries.lock.sh"
 cp "$SCRIPT_DIR/scripts/lib/fetch-binary.sh" \
    "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/lib/fetch-binary.sh"
 cp "$SCRIPT_DIR/scripts/lib/fetch-all.sh" \
    "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/lib/fetch-all.sh"
+cp "$SCRIPT_DIR/scripts/phase-b-setup.sh" \
+   "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/phase-b-setup.sh"
+chmod +x "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/phase-b-setup.sh"
+cp "$SCRIPT_DIR/resources/rocks.rainbow.setup.plist" \
+   "$PAYLOAD_DIR/Applications/Rainbow/installer/resources/rocks.rainbow.setup.plist"
 
 # Embed the operator's subdomain-manager API secret if the build
 # environment provides one. This is the bearer token postinstall will

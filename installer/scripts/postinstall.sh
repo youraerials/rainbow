@@ -1,23 +1,28 @@
 #!/usr/bin/env bash
 #
-# postinstall.sh — Runs after the .pkg copies the Rainbow payload to
-# /Applications/Rainbow/. Sets up everything the wizard needs without
-# requiring Homebrew or Xcode Command Line Tools — every host binary
-# we depend on is fetched directly from upstream GitHub releases.
+# postinstall.sh — Phase A. Runs as root inside the .pkg sandbox.
+# Fetches host binaries, initializes Apple Container, installs the
+# host control daemon, then hands off to Phase B (a one-shot
+# LaunchAgent in the user's session) which builds the rainbow-web
+# image and starts the setup wizard.
 #
-# Sequence:
-#   1. Fetch host binaries (container, yq, jq, cloudflared, restic) into
-#      /Applications/Rainbow/bin via curl + signature/checksum verify.
+# Why split? .pkg postinstall has a hard 10-minute timeout enforced
+# by installd, and Apple Container's `container run` can easily hang
+# longer than that on first start (cold VM, virtiofs setup, image
+# extraction). The container apiserver also runs as the user (not
+# root), so driving it from the .pkg sandbox crosses session
+# boundaries unnecessarily. Phase B runs in the user's launchd
+# session where neither problem exists.
+#
+# Sequence (Phase A, fast — well under 60s):
+#   1. Fetch host binaries (container, yq, jq, cloudflared, restic)
+#      from upstream GitHub releases. Apple Container ships as a
+#      .pkg that needs root to install — that's why this phase has
+#      to run as root.
 #   2. Initialize Apple Container (one-time kernel install).
-#   3. Install + start the precompiled host control daemon.
-#   4. Build the rainbow-web image inside the container VM.
-#   5. Spin up the rainbow-setup container and open the wizard in the
-#      user's browser.
-#
-# The .pkg progress bar tracks file copying; this postinstall takes
-# ~2-5 minutes more for the binary downloads + image build, so we tee
-# everything to /tmp/rainbow-install.log and emit Notification Center
-# toasts at each major phase.
+#   3. Install + start the host control daemon as a user LaunchAgent.
+#   4. Drop the Phase B LaunchAgent and bootstrap it into the user's
+#      GUI session.
 
 set -euo pipefail
 
@@ -26,6 +31,7 @@ BIN_DIR="$INSTALL_DIR/bin"
 LOG_FILE="/tmp/rainbow-install.log"
 PRIMARY_USER="${USER:-$(stat -f '%Su' /dev/console)}"
 USER_HOME=$(eval echo "~$PRIMARY_USER")
+USER_ID=$(id -u "$PRIMARY_USER")
 
 # Helpers
 log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
@@ -36,17 +42,17 @@ toast() {
 }
 fail() {
     log "FATAL: $*"
-    toast "Rainbow" "Install failed — see /tmp/rainbow-install.log"
+    toast "Rainbow" "Install failed - see /tmp/rainbow-install.log"
     exit 1
 }
 
-log "Rainbow postinstall starting (user=$PRIMARY_USER)"
+log "Rainbow postinstall (Phase A) starting (user=$PRIMARY_USER)"
 
 # Source the binary registry + fetch helper. These live alongside this
 # script in the .pkg payload at /Applications/Rainbow/installer/scripts.
 SCRIPTS_DIR="$INSTALL_DIR/installer/scripts"
 if [ ! -f "$SCRIPTS_DIR/lib/fetch-binary.sh" ]; then
-    fail "fetch-binary.sh missing — payload incomplete"
+    fail "fetch-binary.sh missing - payload incomplete"
 fi
 # shellcheck disable=SC1091
 source "$SCRIPTS_DIR/lib/fetch-binary.sh"
@@ -66,7 +72,7 @@ toast "Rainbow" "Fetching tools (~110 MB, takes a couple of minutes)"
 log "Fetching host binaries…"
 RAINBOW_BIN_DIR="$BIN_DIR" \
     bash "$SCRIPTS_DIR/lib/fetch-all.sh" \
-    >> "$LOG_FILE" 2>&1 || fail "binary fetch step failed — see log"
+    >> "$LOG_FILE" 2>&1 || fail "binary fetch step failed - see log"
 
 export PATH="$BIN_DIR:$PATH"
 
@@ -96,84 +102,42 @@ sudo -u "$PRIMARY_USER" -E bash -c "
     bash '$INSTALL_DIR/services/control/install.sh'
 " >> "$LOG_FILE" 2>&1 || fail "control daemon install failed"
 
-toast "Rainbow" "Building Rainbow image (3-5 minutes)"
+# ─── Hand off to Phase B ────────────────────────────────────────
+# Phase B (image build + wizard container start) runs as a one-shot
+# LaunchAgent in the user's GUI session — that's where Apple
+# Container's apiserver lives, and there's no .pkg timeout to fight.
+log "Installing Phase B LaunchAgent…"
+USER_LAUNCH_AGENTS="$USER_HOME/Library/LaunchAgents"
+PHASE_B_PLIST="$USER_LAUNCH_AGENTS/rocks.rainbow.setup.plist"
 
-# ─── Build rainbow-web image ────────────────────────────────────
-# Pure container-side build — Apple Container's VM pulls node:22-alpine
-# from Docker Hub and runs npm ci + tsc inside. The user's host doesn't
-# need Node or any build tooling.
-log "Building rainbow-web image…"
-sudo -u "$PRIMARY_USER" -E bash -c "
-    export PATH='$BIN_DIR:\$PATH'
-    cd '$INSTALL_DIR/web'
-    container build -t rainbow-web:latest .
-" >> "$LOG_FILE" 2>&1 || fail "rainbow-web build failed"
+sudo -u "$PRIMARY_USER" mkdir -p "$USER_LAUNCH_AGENTS"
+cp "$INSTALL_DIR/installer/resources/rocks.rainbow.setup.plist" "$PHASE_B_PLIST"
+chown "$PRIMARY_USER" "$PHASE_B_PLIST"
 
-toast "Rainbow" "Starting setup wizard"
+# The log file was created by Phase A running as root. Hand ownership
+# to the user so Phase B (running in the user's launchd session) can
+# append to it without permission errors.
+chown "$PRIMARY_USER" "$LOG_FILE" 2>/dev/null || true
 
-# ─── Bind-mount dirs + start setup container ────────────────────
-sudo -u "$PRIMARY_USER" mkdir -p \
-    "$USER_HOME/Library/Application Support/Rainbow/setup" \
-    "$USER_HOME/.cloudflared"
-
-SUBDOMAIN_WORKER_URL="${RAINBOW_SUBDOMAIN_WORKER_URL:-https://rainbow-subdomain-manager.misteranderson.workers.dev}"
-
-# The subdomain API secret is normally embedded in the .pkg payload by
-# the release workflow — same value across every install, used to talk
-# to rainbow.rocks's Worker. See docs/installer-architecture.md.
-# Allow override via env so dev builds without the secret can still set
-# one on the command line.
-SUBDOMAIN_API_SECRET="${RAINBOW_SUBDOMAIN_API_SECRET:-}"
-SECRET_FILE="$INSTALL_DIR/installer/.subdomain-api-secret"
-if [ -z "$SUBDOMAIN_API_SECRET" ] && [ -f "$SECRET_FILE" ]; then
-    SUBDOMAIN_API_SECRET=$(cat "$SECRET_FILE")
-    log "Loaded subdomain API secret from .pkg payload."
-fi
-if [ -z "$SUBDOMAIN_API_SECRET" ]; then
-    log "WARN: subdomain API secret missing — wizard will say 'not configured' at provision."
-fi
-
-CONTROL_TOKEN=$(sudo -u "$PRIMARY_USER" /usr/bin/security find-generic-password \
-    -s rainbow-control-token -w 2>/dev/null || echo "")
-
-log "Starting setup wizard container…"
-sudo -u "$PRIMARY_USER" "$BIN_DIR/container" network create frontend \
+# Bootstrap into the user's GUI domain so Phase B can run osascript
+# (toasts) and `open` against the user's display. Must be invoked as
+# the user — root can't bootstrap into another session's gui domain.
+sudo -u "$PRIMARY_USER" launchctl bootout "gui/$USER_ID/rocks.rainbow.setup" \
     >/dev/null 2>&1 || true
-sudo -u "$PRIMARY_USER" "$BIN_DIR/container" delete --force rainbow-setup \
+sudo -u "$PRIMARY_USER" launchctl bootstrap "gui/$USER_ID" "$PHASE_B_PLIST" \
+    >> "$LOG_FILE" 2>&1 || fail "failed to bootstrap Phase B agent"
+
+# ─── Open the progress page ─────────────────────────────────────
+# The control daemon serves a brand-styled progress page at /setup-progress
+# that polls /wizard-status. This gives the user something to watch
+# during the 3-5 minute Phase B work — far less ambiguous than a
+# silent wait punctuated by Notification Center toasts. The page
+# auto-redirects to the wizard once Phase B writes /Applications/
+# Rainbow/.wizard-url.
+log "Opening setup progress page…"
+sudo -u "$PRIMARY_USER" /usr/bin/open "http://localhost:9001/setup-progress" \
     >/dev/null 2>&1 || true
 
-sudo -u "$PRIMARY_USER" "$BIN_DIR/container" run -d --name rainbow-setup \
-    --network frontend \
-    --env RAINBOW_SETUP_MODE=1 \
-    --env "RAINBOW_SUBDOMAIN_WORKER_URL=$SUBDOMAIN_WORKER_URL" \
-    --env "RAINBOW_SUBDOMAIN_API_SECRET=$SUBDOMAIN_API_SECRET" \
-    --env RAINBOW_CONTROL_URL=http://host.docker.internal:9001 \
-    --env "RAINBOW_CONTROL_TOKEN=$CONTROL_TOKEN" \
-    --env "RAINBOW_ROOT=$INSTALL_DIR" \
-    --volume "$USER_HOME/Library/Application Support/Rainbow/setup:/var/lib/rainbow/setup" \
-    --volume "$USER_HOME/.cloudflared:/var/lib/rainbow/cloudflared" \
-    --volume "$INSTALL_DIR/dashboard/dist:/usr/share/web/dashboard:ro" \
-    --volume "$INSTALL_DIR:$INSTALL_DIR" \
-    rainbow-web:latest >> "$LOG_FILE" 2>&1 \
-    || fail "setup container failed to start"
-
-# Wait for an IP
-SETUP_IP=""
-for _ in $(seq 1 20); do
-    SETUP_IP=$(sudo -u "$PRIMARY_USER" "$BIN_DIR/container" inspect rainbow-setup \
-        2>/dev/null | "$BIN_DIR/yq" -p=json '.[0].networks[0].ipv4Address // ""' \
-        2>/dev/null | sed 's|/.*||')
-    if [ -n "$SETUP_IP" ]; then break; fi
-    sleep 1
-done
-[ -n "$SETUP_IP" ] || fail "setup container never got an IP"
-
-WIZARD_URL="http://$SETUP_IP:3000/"
-echo "$WIZARD_URL" > "$INSTALL_DIR/.wizard-url"
-chmod 644 "$INSTALL_DIR/.wizard-url"
-
-log "Postinstall complete. Wizard at $WIZARD_URL"
-toast "Rainbow" "Setup is ready — opening your browser."
-sudo -u "$PRIMARY_USER" /usr/bin/open "$WIZARD_URL"
+log "Postinstall (Phase A) complete. Phase B running via LaunchAgent."
 
 exit 0

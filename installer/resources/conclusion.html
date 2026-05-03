@@ -52,13 +52,16 @@
   <h1>Almost <em>there</em>.</h1>
 
   <p class="lede">
-    Rainbow is installed at <code>/Applications/Rainbow/</code>. Your
-    browser is opening the setup wizard — finish there.
+    Rainbow is installed at <code>/Applications/Rainbow/</code>.
+    Setup is still running in the background — building the Rainbow
+    image takes another few minutes. Your browser will open
+    automatically when the wizard is ready.
   </p>
 
   <h3>If your browser didn't open</h3>
   <p>
-    Run the URL stashed at <code>/Applications/Rainbow/.wizard-url</code>:
+    The wizard URL is written to
+    <code>/Applications/Rainbow/.wizard-url</code> when it's ready:
   </p>
   <p>
     <code>open "$(cat /Applications/Rainbow/.wizard-url)"</code>
@@ -66,9 +69,10 @@
 
   <h3>If something went wrong</h3>
   <p class="fineprint">
-    The install log is at <code>/tmp/rainbow-install.log</code>. To
-    re-run setup at any time, restart the wizard container with
-    <code>open "$(cat /Applications/Rainbow/.wizard-url)"</code>.
+    The install log is at <code>/tmp/rainbow-install.log</code>.
+    Setup runs as a LaunchAgent at <code>rocks.rainbow.setup</code>
+    — you can re-trigger it with
+    <code>launchctl kickstart -k gui/$(id -u)/rocks.rainbow.setup</code>.
   </p>
 </body>
 </html>

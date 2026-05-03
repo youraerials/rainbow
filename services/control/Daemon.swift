@@ -43,6 +43,130 @@ func log(_ message: String) {
     FileHandle.standardError.write(Data("[control] \(message)\n".utf8))
 }
 
+// Shown to the user right after the .pkg installer reports success.
+// Polls /wizard-status until Phase B (the LaunchAgent that builds
+// the rainbow-web image and starts the setup container) writes the
+// wizard URL. Then redirects.
+let setupProgressHTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rainbow — getting ready</title>
+<style>
+  :root {
+    color-scheme: light;
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f4ecd8;
+    color: #1a1612;
+    font-family: "Iowan Old Style", "Hoefler Text", Georgia, serif;
+    line-height: 1.55;
+  }
+  main {
+    max-width: 32rem;
+    padding: 3rem 2.5rem;
+    text-align: left;
+  }
+  h1 {
+    font-weight: 400;
+    font-size: 2.6rem;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+    margin: 0 0 1rem;
+  }
+  h1 em { font-style: italic; }
+  .lede {
+    font-size: 1.05rem;
+    color: #514738;
+    margin: 0 0 2rem;
+  }
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 0.95rem;
+    color: #1a1612;
+    border-top: 1px solid #c5b89a;
+    padding-top: 1.25rem;
+  }
+  .spinner {
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid #c5b89a;
+    border-top-color: #1a1612;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    flex: 0 0 auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .fineprint {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 0.85rem;
+    color: #7a6e5c;
+    margin-top: 1.5rem;
+  }
+  .fineprint code {
+    background: #e3d6b8;
+    border: 1px solid #b3a888;
+    border-radius: 2px;
+    padding: 0.05em 0.4em;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 0.92em;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Setting up <em>Rainbow</em>.</h1>
+  <p class="lede">
+    Rainbow is finishing in the background — building the container
+    image and starting the setup wizard. This usually takes 3–5
+    minutes. This page will turn into the wizard automatically.
+  </p>
+  <div class="status">
+    <div class="spinner" aria-hidden="true"></div>
+    <div id="status-text">Building the Rainbow image…</div>
+  </div>
+  <p class="fineprint">
+    Live install log: <code>tail -f /tmp/rainbow-install.log</code>
+  </p>
+</main>
+<script>
+  const statusEl = document.getElementById('status-text');
+  let elapsed = 0;
+  async function poll() {
+    try {
+      const r = await fetch('/wizard-status', { cache: 'no-store' });
+      if (r.ok) {
+        const j = await r.json();
+        if (j.ready && j.url) {
+          statusEl.textContent = 'Ready — opening the wizard.';
+          window.location.replace(j.url);
+          return;
+        }
+      }
+    } catch (e) { /* daemon may briefly hiccup; keep polling */ }
+    elapsed += 2;
+    if (elapsed >= 60 && elapsed < 180) {
+      statusEl.textContent = 'Building the Rainbow image… (still working)';
+    } else if (elapsed >= 180) {
+      statusEl.textContent = 'Almost there — starting the setup wizard…';
+    }
+    setTimeout(poll, 2000);
+  }
+  poll();
+</script>
+</body>
+</html>
+"""
+
 func loadTokenFromKeychain() -> String {
     let result = runSync("/usr/bin/security",
                         ["find-generic-password", "-s", "rainbow-control-token", "-w"])
@@ -102,6 +226,16 @@ final class ResponseWriter {
     func writeJSON(_ status: Int, _ object: Any) {
         let data = (try? JSONSerialization.data(withJSONObject: object)) ?? Data("{}".utf8)
         writeHead(status: status, headers: ["Content-Type": "application/json", "Content-Length": "\(data.count)"])
+        send(data)
+        end()
+    }
+
+    func writeText(_ status: Int, _ contentType: String, _ body: String) {
+        let data = Data(body.utf8)
+        writeHead(status: status, headers: [
+            "Content-Type": contentType,
+            "Content-Length": "\(data.count)",
+        ])
         send(data)
         end()
     }
@@ -268,6 +402,19 @@ func route(_ req: HTTPRequest, _ res: ResponseWriter) {
         res.writeJSON(200, ["status": "ok"])
         return
     }
+    // /setup-progress — unauth landing page shown right after the .pkg
+    // installer reports success. Polls /wizard-status until Phase B
+    // writes .wizard-url, then redirects to the wizard.
+    if req.method == "GET" && req.path == "/setup-progress" {
+        res.writeText(200, "text/html; charset=utf-8", setupProgressHTML)
+        return
+    }
+    // /wizard-status — unauth poll endpoint for the progress page.
+    // Returns {ready: true, url: "..."} once .wizard-url exists.
+    if req.method == "GET" && req.path == "/wizard-status" {
+        handleWizardStatus(res: res)
+        return
+    }
     if !authorized(req) {
         res.writeJSON(401, ["error": "missing or invalid bearer token"])
         return
@@ -398,6 +545,18 @@ func handleRun(task: String, res: ResponseWriter) {
     res.startSSE()
     res.sse(event: "started", data: "{\"task\":\"\(task)\"}")
     streamProcessAsSSE(executable: "/bin/bash", arguments: args, taskName: task, res: res)
+}
+
+func handleWizardStatus(res: ResponseWriter) {
+    let urlPath = "\(rainbowRoot)/.wizard-url"
+    if let raw = try? String(contentsOfFile: urlPath, encoding: .utf8) {
+        let url = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !url.isEmpty {
+            res.writeJSON(200, ["ready": true, "url": url])
+            return
+        }
+    }
+    res.writeJSON(200, ["ready": false])
 }
 
 func handleKeychainPut(service: String, body: Data, res: ResponseWriter) {
