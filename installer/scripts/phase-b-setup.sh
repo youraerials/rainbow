@@ -40,6 +40,15 @@ log "Phase B starting (user=$USER)"
 
 # ─── Build rainbow-web image ──────────────────────────────────────
 toast "Rainbow" "Building Rainbow image (3-5 minutes)"
+
+# Apple Container 0.11's build helper container ('buildkit') doesn't
+# auto-recover from a stopped state — `container build` aborts with
+# "container expected to be in created state, got: stopped". This
+# happens on every re-install after a previous build. Force-delete
+# any stale buildkit so the build creates a fresh one. Idempotent:
+# fails silently if buildkit doesn't exist.
+"$BIN_DIR/container" delete --force buildkit >/dev/null 2>&1 || true
+
 log "Building rainbow-web image..."
 (
     cd "$INSTALL_DIR/web"
