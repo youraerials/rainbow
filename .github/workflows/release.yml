@@ -69,6 +69,13 @@ jobs:
       - name: Build .pkg (compiles Swift daemon + bundles dashboard)
         env:
           RAINBOW_VERSION: ${{ env.VERSION }}
+          # Embedded into the payload at build time so postinstall has
+          # the bearer token it needs to talk to rainbow.rocks's
+          # subdomain-manager Worker. Same value the Worker has as its
+          # API_SECRET. Acceptable risk for v1: anyone who downloads
+          # the .pkg can extract it; rate-limit on the Worker bounds
+          # abuse. Rotate when needed.
+          RAINBOW_SUBDOMAIN_API_SECRET: ${{ secrets.RAINBOW_SUBDOMAIN_API_SECRET }}
         run: |
           bash installer/build-pkg.sh
 

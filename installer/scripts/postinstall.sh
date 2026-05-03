@@ -120,13 +120,24 @@ sudo -u "$PRIMARY_USER" mkdir -p \
     "$USER_HOME/.cloudflared"
 
 SUBDOMAIN_WORKER_URL="${RAINBOW_SUBDOMAIN_WORKER_URL:-https://rainbow-subdomain-manager.misteranderson.workers.dev}"
+
+# The subdomain API secret is normally embedded in the .pkg payload by
+# the release workflow — same value across every install, used to talk
+# to rainbow.rocks's Worker. See docs/installer-architecture.md.
+# Allow override via env so dev builds without the secret can still set
+# one on the command line.
 SUBDOMAIN_API_SECRET="${RAINBOW_SUBDOMAIN_API_SECRET:-}"
+SECRET_FILE="$INSTALL_DIR/installer/.subdomain-api-secret"
+if [ -z "$SUBDOMAIN_API_SECRET" ] && [ -f "$SECRET_FILE" ]; then
+    SUBDOMAIN_API_SECRET=$(cat "$SECRET_FILE")
+    log "Loaded subdomain API secret from .pkg payload."
+fi
+if [ -z "$SUBDOMAIN_API_SECRET" ]; then
+    log "WARN: subdomain API secret missing — wizard will say 'not configured' at provision."
+fi
+
 CONTROL_TOKEN=$(sudo -u "$PRIMARY_USER" /usr/bin/security find-generic-password \
     -s rainbow-control-token -w 2>/dev/null || echo "")
-
-if [ -z "$SUBDOMAIN_API_SECRET" ]; then
-    log "WARN: RAINBOW_SUBDOMAIN_API_SECRET not in env — wizard will run, but provision will return 'not configured'."
-fi
 
 log "Starting setup wizard container…"
 sudo -u "$PRIMARY_USER" "$BIN_DIR/container" network create frontend \

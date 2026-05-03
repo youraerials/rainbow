@@ -87,6 +87,22 @@ cp "$SCRIPT_DIR/scripts/binaries.lock.sh" \
 cp "$SCRIPT_DIR/scripts/lib/fetch-binary.sh" \
    "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/lib/fetch-binary.sh"
 
+# Embed the operator's subdomain-manager API secret if the build
+# environment provides one. This is the bearer token postinstall will
+# use to authenticate against rainbow.rocks's Worker so the wizard can
+# claim a subdomain on the user's behalf. The secret is shared across
+# all installs (not per-user) — see docs/installer-architecture.md.
+# A .pkg without this file still installs cleanly; the wizard just
+# returns "not configured" at the provision step.
+if [ -n "${RAINBOW_SUBDOMAIN_API_SECRET:-}" ]; then
+    SECRET_PATH="$PAYLOAD_DIR/Applications/Rainbow/installer/.subdomain-api-secret"
+    printf '%s' "$RAINBOW_SUBDOMAIN_API_SECRET" > "$SECRET_PATH"
+    chmod 600 "$SECRET_PATH"
+    echo "Embedded subdomain API secret in payload."
+else
+    echo "RAINBOW_SUBDOMAIN_API_SECRET not set — wizard will say 'not configured' at provision time."
+fi
+
 # Compile the host control daemon (Swift) and ship the binary in the
 # payload's bin/ directory. Drops the Node dependency for the user's
 # Mac — Apple ships the Swift runtime, the compiler is only needed
