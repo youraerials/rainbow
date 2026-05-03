@@ -41,18 +41,26 @@ log "Phase B starting (user=$USER)"
 # ─── Build rainbow-web image ──────────────────────────────────────
 toast "Rainbow" "Building Rainbow image (3-5 minutes)"
 
-# Pre-start the build helper (buildkit). Apple Container's implicit
-# buildkit bootstrap inside `container build` has a tight internal
-# timeout, so on a fresh install — where the buildkit image (~78 MB)
-# still has to be pulled — `container build` fails with "timeout:
-# failed to get a connection to agent socket". The dedicated
-# `builder start` subcommand has no such timeout, and is idempotent:
-# - missing: pulls the image, creates and starts buildkit
-# - stopped: starts it (also recovers from prior-install leftovers
-#   that would otherwise trip "expected created, got stopped")
-# - running: no-op, exits 0
-log "Starting build helper (buildkit)..."
-"$BIN_DIR/container" builder start \
+# Pre-start the build helper (buildkit) with enough headroom for the
+# rainbow-web build. Two reasons we don't rely on the implicit
+# bootstrap inside `container build`:
+#   1. That implicit start has a tight internal timeout — on a fresh
+#      install where the buildkit image (~78 MB) still has to be
+#      pulled, it fails with "timeout: failed to get a connection
+#      to agent socket". `builder start` has no such timeout.
+#   2. The default resource allocation (2 CPU / 2 GB) OOM-kills
+#      `npm ci` mid-install. Our Dockerfile is multi-stage with two
+#      parallel `npm ci` invocations (build deps + runtime deps),
+#      both unpacking the full rainbow-web dep tree (Express + MCP
+#      SDK + Anthropic SDK + React) at once. 6 GB is comfortable.
+#
+# Recreate from scratch so resource flags actually take effect — they
+# are honored only at create time. Stop+delete are idempotent (no-op
+# if buildkit is missing or stopped).
+log "Preparing build helper (buildkit) with extra headroom..."
+"$BIN_DIR/container" builder stop   >/dev/null 2>&1 || true
+"$BIN_DIR/container" builder delete >/dev/null 2>&1 || true
+"$BIN_DIR/container" builder start --cpus 4 --memory 6G \
     >> "$LOG_FILE" 2>&1 || fail "failed to start buildkit"
 
 log "Building rainbow-web image..."
