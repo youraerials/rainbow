@@ -78,51 +78,114 @@ jobs:
       # APPLE_INSTALLER_CERT_PASSWORD, APPLE_NOTARY_API_KEY,
       # APPLE_NOTARY_API_KEY_ID, APPLE_NOTARY_API_ISSUER.
 
-      - name: Sign and notarize
+      - name: Sign embedded binaries, sign + notarize the .pkg
         if: ${{ env.APPLE_DEVELOPER_ID != '' }}
         env:
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+          APPLE_APPLICATION_ID: ${{ secrets.APPLE_APPLICATION_ID }}
           APPLE_INSTALLER_CERT_P12: ${{ secrets.APPLE_INSTALLER_CERT_P12 }}
+          APPLE_APPLICATION_CERT_P12: ${{ secrets.APPLE_APPLICATION_CERT_P12 }}
           APPLE_INSTALLER_CERT_PASSWORD: ${{ secrets.APPLE_INSTALLER_CERT_PASSWORD }}
+          APPLE_APPLICATION_CERT_PASSWORD: ${{ secrets.APPLE_APPLICATION_CERT_PASSWORD }}
           APPLE_NOTARY_API_KEY: ${{ secrets.APPLE_NOTARY_API_KEY }}
           APPLE_NOTARY_API_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
           APPLE_NOTARY_API_ISSUER: ${{ secrets.APPLE_NOTARY_API_ISSUER }}
         run: |
           set -e
-          # Import the installer signing cert into a temporary keychain.
+          # ─── Import both signing certs into a temp keychain ────
           KEYCHAIN="$RUNNER_TEMP/build.keychain"
           KEYCHAIN_PASSWORD="$(uuidgen)"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -t 3600 -l "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 
-          echo "$APPLE_INSTALLER_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security import "$RUNNER_TEMP/cert.p12" \
+          # Installer cert — for productsign on the .pkg envelope
+          echo "$APPLE_INSTALLER_CERT_P12" | base64 --decode > "$RUNNER_TEMP/installer.p12"
+          security import "$RUNNER_TEMP/installer.p12" \
             -k "$KEYCHAIN" \
             -P "$APPLE_INSTALLER_CERT_PASSWORD" \
-            -T /usr/bin/productsign \
+            -T /usr/bin/productsign
+
+          # Application cert — for codesign on Mach-O binaries inside.
+          # Falls back to APPLE_INSTALLER_CERT_PASSWORD if a separate
+          # password isn't supplied (common case: same password).
+          APP_CERT_PASS="${APPLE_APPLICATION_CERT_PASSWORD:-$APPLE_INSTALLER_CERT_PASSWORD}"
+          echo "$APPLE_APPLICATION_CERT_P12" | base64 --decode > "$RUNNER_TEMP/app.p12"
+          security import "$RUNNER_TEMP/app.p12" \
+            -k "$KEYCHAIN" \
+            -P "$APP_CERT_PASS" \
             -T /usr/bin/codesign
+
           security list-keychains -s "$KEYCHAIN" $(security list-keychains -d user | tr -d \"\")
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 
-          # Sign
+          # ─── Codesign every Mach-O binary inside the payload ────
+          # Notarization requires every executable + dylib to be signed
+          # with a Developer ID Application cert + hardened runtime +
+          # secure timestamp. We rebuild the .pkg AFTER signing inner
+          # binaries, since pkgbuild bakes in the file contents.
+          PAYLOAD="installer/build/payload"
+          if [ -d "$PAYLOAD" ]; then
+            find "$PAYLOAD" -type f \( -perm +111 -o -name "*.dylib" \) | \
+              while read -r f; do
+                if file "$f" | grep -q "Mach-O"; then
+                  echo "Codesigning $f"
+                  codesign --force --options runtime --timestamp \
+                    --sign "$APPLE_APPLICATION_ID" "$f"
+                fi
+              done
+          fi
+
+          # Rebuild the inner pkg so it picks up the freshly-signed
+          # binaries. (The product.pkg around it gets re-wrapped below.)
+          rm -f installer/build/rainbow-component.pkg
+          pkgbuild \
+            --root "$PAYLOAD" \
+            --scripts "installer/build/scripts" \
+            --identifier "rocks.rainbow.installer" \
+            --version "$VERSION" \
+            --install-location "/" \
+            "installer/build/rainbow-component.pkg"
+
+          rm -f "installer/build/Rainbow-${VERSION}.pkg"
+          productbuild \
+            --distribution "installer/build/distribution.xml" \
+            --resources "installer/resources" \
+            --package-path "installer/build" \
+            "installer/build/Rainbow-${VERSION}.pkg"
+
+          # ─── Sign + notarize the .pkg envelope ────────────────
           PKG="installer/build/Rainbow-${VERSION}.pkg"
           SIGNED="installer/build/Rainbow-${VERSION}-signed.pkg"
           productsign --sign "$APPLE_DEVELOPER_ID" "$PKG" "$SIGNED"
           mv "$SIGNED" "$PKG"
 
-          # Notarize
+          # Notarize. On Invalid, fetch the log so we can debug.
           echo "$APPLE_NOTARY_API_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          set +e
           xcrun notarytool submit "$PKG" \
             --key "$RUNNER_TEMP/AuthKey.p8" \
             --key-id "$APPLE_NOTARY_API_KEY_ID" \
             --issuer "$APPLE_NOTARY_API_ISSUER" \
-            --wait
+            --wait | tee "$RUNNER_TEMP/notary-output.txt"
+          NOTARY_EXIT=$?
+          # Find the submission id even on failure so we can pull logs.
+          SUB_ID=$(grep -E '^\s*id:' "$RUNNER_TEMP/notary-output.txt" | head -1 | awk '{print $2}')
+          if [ "$NOTARY_EXIT" -ne 0 ] || grep -q "status: Invalid" "$RUNNER_TEMP/notary-output.txt"; then
+            echo ""
+            echo "::error::Notarization failed. Fetching log for submission $SUB_ID:"
+            xcrun notarytool log "$SUB_ID" \
+              --key "$RUNNER_TEMP/AuthKey.p8" \
+              --key-id "$APPLE_NOTARY_API_KEY_ID" \
+              --issuer "$APPLE_NOTARY_API_ISSUER" || true
+            exit 1
+          fi
+          set -e
           xcrun stapler staple "$PKG"
 
-          # Wipe the temp keychain
+          # ─── Cleanup ──────────────────────────────────────────
           security delete-keychain "$KEYCHAIN"
-          rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/AuthKey.p8"
+          rm -f "$RUNNER_TEMP/installer.p12" "$RUNNER_TEMP/app.p12" "$RUNNER_TEMP/AuthKey.p8"
 
       # ─── Normalize asset name + checksum ────────────────────────
 
