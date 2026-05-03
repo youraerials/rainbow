@@ -44,9 +44,9 @@ func log(_ message: String) {
 }
 
 // Shown to the user right after the .pkg installer reports success.
-// Polls /wizard-status until Phase B (the LaunchAgent that builds
-// the rainbow-web image and starts the setup container) writes the
-// wizard URL. Then redirects.
+// Polls /wizard-status until Phase B (the LaunchAgent that pulls the
+// rainbow-web image from GHCR and starts the setup container) writes
+// the wizard URL. Then redirects.
 let setupProgressHTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -126,13 +126,13 @@ let setupProgressHTML = """
 <main>
   <h1>Setting up <em>Rainbow</em>.</h1>
   <p class="lede">
-    Rainbow is finishing in the background — building the container
-    image and starting the setup wizard. This usually takes 3–5
-    minutes. This page will turn into the wizard automatically.
+    Rainbow is finishing in the background — fetching the container
+    image and starting the setup wizard. This usually takes under a
+    minute. This page will turn into the wizard automatically.
   </p>
   <div class="status">
     <div class="spinner" aria-hidden="true"></div>
-    <div id="status-text">Building the Rainbow image…</div>
+    <div id="status-text">Fetching the Rainbow image…</div>
   </div>
   <p class="fineprint">
     Live install log: <code>tail -f /tmp/rainbow-install.log</code>
@@ -154,10 +154,12 @@ let setupProgressHTML = """
       }
     } catch (e) { /* daemon may briefly hiccup; keep polling */ }
     elapsed += 2;
-    if (elapsed >= 60 && elapsed < 180) {
-      statusEl.textContent = 'Building the Rainbow image… (still working)';
-    } else if (elapsed >= 180) {
-      statusEl.textContent = 'Almost there — starting the setup wizard…';
+    if (elapsed >= 20 && elapsed < 60) {
+      statusEl.textContent = 'Starting the setup wizard…';
+    } else if (elapsed >= 60 && elapsed < 120) {
+      statusEl.textContent = 'Waiting for the wizard to come online…';
+    } else if (elapsed >= 120) {
+      statusEl.textContent = 'Still working — see the install log if this stays stuck.';
     }
     setTimeout(poll, 2000);
   }
