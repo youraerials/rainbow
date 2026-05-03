@@ -1,0 +1,309 @@
+#!/usr/bin/env bash
+#
+# rainbow — CLI for managing your self-hosted digital life.
+#
+# Usage:
+#   rainbow <command> [options]
+#
+# Commands:
+#   start [service]    Start all services or a specific service
+#   stop [service]     Stop all services or a specific service
+#   status             Show status of all services
+#   logs [service]     Follow logs for a service
+#   config apply       Generate configs from rainbow.yaml
+#   config edit        Open rainbow.yaml in your editor
+#   backup             Run a backup now
+#   restore            Restore from a backup
+#   update             Pull latest images and restart
+#   help               Show this help message
+
+set -euo pipefail
+
+RAINBOW_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CLI_DIR="$RAINBOW_ROOT/cli"
+INFRA_DIR="$RAINBOW_ROOT/infrastructure"
+CONFIG_FILE="$RAINBOW_ROOT/config/rainbow.yaml"
+
+# ─── Colors ──────────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# ─── Helpers ────────────────────────────────────────��────────────
+info()  { echo -e "${BLUE}[rainbow]${NC} $*"; }
+ok()    { echo -e "${GREEN}[rainbow]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[rainbow]${NC} $*"; }
+err()   { echo -e "${RED}[rainbow]${NC} $*" >&2; }
+
+# ─── Container runtime abstraction ──────────────────────────────
+# Apple Container is the primary runtime. Orchestration uses our own
+# services/orchestrator.sh because container-compose 0.11 is too feature-incomplete
+# (no DNS-by-name, no env interpolation, no condition-based depends_on).
+# Docker is supported as a fallback for users who prefer the existing ecosystem.
+
+ORCHESTRATOR="$RAINBOW_ROOT/services/orchestrator.sh"
+
+# True if we should use Apple Container + orchestrator.sh.
+use_native() {
+    command -v container &>/dev/null
+}
+
+# Fallback compose helper for the Docker path.
+compose() {
+    docker compose -f "$INFRA_DIR/docker-compose.yml" --env-file "$INFRA_DIR/.env" "$@"
+}
+
+# Check which runtime is active
+runtime_name() {
+    if use_native; then
+        echo "Apple Container"
+    elif command -v docker &>/dev/null; then
+        echo "Docker"
+    else
+        echo "none"
+    fi
+}
+
+require_config() {
+    if [ ! -f "$INFRA_DIR/.env" ]; then
+        err "Configuration not generated yet."
+        err "Run 'rainbow config apply' first."
+        exit 1
+    fi
+}
+
+require_runtime() {
+    if ! use_native && ! command -v docker &>/dev/null; then
+        err "No container runtime installed."
+        err "Install Apple Container: brew install container"
+        exit 1
+    fi
+    # Ensure Apple Container system is running
+    if use_native; then
+        if ! container system status &>/dev/null 2>&1; then
+            info "Starting Apple Container system service..."
+            container system start --enable-kernel-install 2>/dev/null || true
+        fi
+    fi
+}
+
+# ─── Commands ────────────────────────────────────────────────────
+cmd_start() {
+    local service="${1:-}"
+    require_config
+    require_runtime
+
+    if [ -n "$service" ]; then
+        if use_native; then
+            err "Per-service start isn't supported on Apple Container yet."
+            err "Use 'rainbow start' (no service name) to bring up the whole stack."
+            exit 1
+        fi
+        info "Starting $service..."
+        compose up -d "$service"
+    else
+        info "Starting all Rainbow services ($(runtime_name))..."
+        if use_native; then
+            bash "$ORCHESTRATOR" minimum
+        else
+            compose up -d
+        fi
+        ok "All services started."
+    fi
+}
+
+cmd_stop() {
+    local service="${1:-}"
+
+    if [ -n "$service" ]; then
+        info "Stopping $service..."
+        case "$service" in
+            *)
+                if use_native; then
+                    container stop "rainbow-$service" 2>/dev/null || \
+                        container stop "$service" 2>/dev/null || true
+                else
+                    compose stop "$service"
+                fi
+                ;;
+        esac
+    else
+        info "Stopping all Rainbow services..."
+        if use_native; then
+            bash "$ORCHESTRATOR" stop
+        else
+            compose down
+        fi
+        brew services stop stalwart-mail 2>/dev/null || true
+        brew services stop jellyfin 2>/dev/null || true
+        pkill -f "paper.*\.jar" 2>/dev/null || true
+        ok "All services stopped."
+    fi
+}
+
+cmd_status() {
+    echo -e "${BOLD}Rainbow Service Status${NC}"
+    echo -e "  Runtime: $(runtime_name)"
+    echo ""
+
+    if [ -f "$INFRA_DIR/.env" ]; then
+        echo -e "${BOLD}Containers:${NC}"
+        if command -v container &>/dev/null; then
+            container list 2>/dev/null | grep rainbow || \
+                warn "No rainbow containers running."
+        else
+            compose ps 2>/dev/null || \
+                warn "Container services not running or config not generated."
+        fi
+    else
+        warn "Config not generated. Run 'rainbow config apply'"
+    fi
+
+    echo ""
+
+    # Show domain info
+    if [ -f "$CONFIG_FILE" ] && command -v yq &>/dev/null; then
+        local prefix zone host_prefix
+        prefix=$(yq eval '.domain.prefix // ""' "$CONFIG_FILE" 2>/dev/null)
+        zone=$(yq eval '.domain.zone' "$CONFIG_FILE" 2>/dev/null)
+        [ "$prefix" = "null" ] && prefix=""
+        [ -n "$prefix" ] && host_prefix="${prefix}-" || host_prefix=""
+        if [ -n "$zone" ] && [ "$zone" != "null" ]; then
+            local web_host
+            if [ -n "$prefix" ]; then web_host="${prefix}.${zone}"; else web_host="$zone"; fi
+            echo -e "${BOLD}Access URLs:${NC}"
+            echo "  Dashboard:  https://${web_host}"
+            echo "  Auth:       https://${host_prefix}auth.${zone}"
+            echo "  Photos:     https://${host_prefix}photos.${zone}"
+            echo "  Email:      https://${host_prefix}mail.${zone}"
+            echo "  Files:      https://${host_prefix}files.${zone}"
+            echo "  Docs:       https://${host_prefix}docs.${zone}"
+            echo "  Media:      https://${host_prefix}media.${zone}"
+        fi
+    fi
+}
+
+cmd_logs() {
+    local service="${1:-}"
+    require_config
+
+    if [ -z "$service" ]; then
+        if use_native; then
+            err "Use 'rainbow logs <service>' (per-service) on Apple Container."
+            err "Containers: $(container ls --format json 2>/dev/null | yq -p=json '.[].configuration.id' | tr '\n' ' ')"
+            exit 1
+        fi
+        compose logs -f --tail=100
+    else
+        if use_native; then
+            container logs --follow "rainbow-$service" 2>/dev/null || \
+                container logs --follow "$service"
+        else
+            compose logs -f --tail=100 "$service"
+        fi
+    fi
+}
+
+cmd_config() {
+    local subcmd="${1:-}"
+    case "$subcmd" in
+        apply)
+            info "Generating configuration from rainbow.yaml..."
+            bash "$RAINBOW_ROOT/scripts/generate-config.sh" "$CONFIG_FILE"
+            ok "Configuration applied."
+            ;;
+        edit)
+            "${EDITOR:-nano}" "$CONFIG_FILE"
+            ;;
+        *)
+            err "Usage: rainbow config <apply|edit>"
+            exit 1
+            ;;
+    esac
+}
+
+cmd_backup() {
+    info "Starting backup..."
+    bash "$RAINBOW_ROOT/backups/backup.sh"
+}
+
+cmd_update() {
+    if use_native; then
+        info "Pulling latest images..."
+        for image in \
+            docker.io/library/postgres:17-alpine \
+            docker.io/valkey/valkey:8-alpine \
+            docker.io/library/caddy:2-alpine \
+            docker.io/cloudflare/cloudflared:latest; do
+            container image pull "$image" 2>&1 | tail -2 || true
+        done
+        info "Restarting services..."
+        bash "$ORCHESTRATOR" minimum
+    else
+        info "Pulling latest images..."
+        compose pull
+        info "Restarting services..."
+        compose up -d
+    fi
+    ok "Update complete."
+}
+
+cmd_help() {
+    cat <<EOF
+rainbow -- Manage your self-hosted digital life
+
+Usage:
+  rainbow <command> [options]
+
+Commands:
+  start [service]    Start all services or a specific one
+  stop [service]     Stop all services or a specific one
+  status             Show status of all services
+  logs [service]     Follow logs (all or specific service)
+  config apply       Generate configs from rainbow.yaml
+  config edit        Open rainbow.yaml in your editor
+  backup             Run a backup now
+  update             Pull latest images and restart
+  help               Show this help
+
+Container runtime: $(runtime_name)
+
+Services:
+  Container:  caddy, cloudflared, postgres, valkey, authentik-server,
+              immich-server, cryptpad, seafile
+  Native:     stalwart, jellyfin, minecraft
+
+Examples:
+  rainbow start                 # Start everything
+  rainbow stop immich-server    # Stop just Immich
+  rainbow logs caddy            # Follow Caddy logs
+  rainbow config apply          # Regenerate all configs
+EOF
+}
+
+# ─── Main ────────────────────────────────────────────────────────
+main() {
+    local command="${1:-help}"
+    shift || true
+
+    case "$command" in
+        start)   cmd_start "$@" ;;
+        stop)    cmd_stop "$@" ;;
+        status)  cmd_status ;;
+        logs)    cmd_logs "$@" ;;
+        config)  cmd_config "$@" ;;
+        backup)  cmd_backup ;;
+        update)  cmd_update ;;
+        help|--help|-h) cmd_help ;;
+        *)
+            err "Unknown command: $command"
+            cmd_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

@@ -1,0 +1,99 @@
+# Rainbow Configuration
+# This is the single source of truth for your Rainbow installation.
+# Edit this file to customize your setup, then run: rainbow config apply
+
+rainbow:
+  version: "0.1.0"
+# --- Domain ---
+# Service hostnames are <prefix>-<service>.<zone> on a shared zone, e.g.
+# `aubrey-auth.rainbow.rocks`, `aubrey-photos.rainbow.rocks`. All are first-level
+# subdomains, which is what Cloudflare's free Universal SSL covers.
+#
+# BYO domain: leave `prefix` empty and set `zone` to your own domain. Hostnames
+# become `<service>.<zone>`, e.g. `auth.example.com`.
+domain:
+  prefix: "test" # User prefix (e.g. "aubrey"). Empty for BYO domain.
+  zone: "rainbow.rocks" # Cloudflare zone (e.g. "example.com" for BYO).
+# --- Cloudflare ---
+# API token needs Zone.DNS:Edit and Cloudflare Tunnel permissions.
+# Store the actual token in macOS Keychain (the installer does this automatically).
+cloudflare:
+  zone_id: "df1a726c81d085bb50a8be9f30d82730"
+  tunnel_id: "637940cb-2a5d-481b-9e84-4f121d26635f"
+  # api_token is read from macOS Keychain at runtime, not stored here
+# --- Admin ---
+admin:
+  name: "Aubrey"
+  email: "aubrey@test.rainbow.rocks"
+# --- Services ---
+# Toggle services on/off. Disabled services won't be started or configured.
+services:
+  # Core infrastructure (always enabled)
+  postgres:
+    version: "17"
+  valkey:
+    version: "8"
+  caddy:
+    # Caddy listens on localhost only; Cloudflare Tunnel handles external access
+    http_port: 80
+    https_port: 443
+  cloudflared:
+    # Managed automatically via tunnel_id above
+    metrics_port: 2000
+  # Identity & Auth
+  authentik:
+    enabled: true
+  # Photos & Videos
+  immich:
+    enabled: true
+    upload_path: "./infrastructure/immich/upload"
+    # Set to external drive path for large libraries:
+    # upload_path: "/Volumes/ExternalSSD/rainbow/photos"
+    enable_ml: true
+  # Email, Calendar, Contacts
+  stalwart:
+    enabled: true
+    data_path: "~/Library/Application Support/Rainbow/stalwart"
+    # Mail domains served by this instance
+    domains:
+      - test-mail.rainbow.rocks
+  # Collaborative Documents
+  cryptpad:
+    enabled: true
+  # File Sharing & Sync
+  seafile:
+    enabled: true
+    data_path: "./infrastructure/seafile/data"
+    # Set to external drive for large file libraries:
+    # data_path: "/Volumes/ExternalSSD/rainbow/seafile"
+  # Media Server
+  jellyfin:
+    enabled: true
+    media_paths:
+      - "~/Movies"
+      - "~/Music"
+      # Add external drives:
+      # - "/Volumes/ExternalSSD/media"
+  # Minecraft Server
+  minecraft:
+    enabled: false
+    memory: "4G"
+    server_name: "Rainbow MC"
+    max_players: 20
+# --- Backups ---
+backups:
+  enabled: true
+  # Cron schedule (default: 3 AM daily)
+  schedule: "0 3 * * *"
+  # Restic repository URL (s3:, b2:, sftp:, or local path)
+  repository: ""
+  # Restic password is stored in macOS Keychain
+  retention:
+    keep_daily: 7
+    keep_weekly: 4
+    keep_monthly: 6
+# --- AI ---
+ai:
+  enabled: true
+  # Claude API key is stored in macOS Keychain
+  model: "claude-sonnet-4-20250514"

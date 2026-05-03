@@ -1,0 +1,28 @@
+# Rainbow Subdomain Manager — operator-owned Worker that provisions
+# tunnels + DNS + Email Routing for new Rainbow installs claiming a
+# *.rainbow.rocks subdomain.
+
+name = "rainbow-subdomain-manager"
+main = "src/subdomain-manager/index.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+ALLOWED_PARENT_DOMAIN = "rainbow.rocks"
+# rainbow.rocks zone ID (cached in config/rainbow.yaml as cloudflare.zone_id).
+CLOUDFLARE_ZONE_ID = "df1a726c81d085bb50a8be9f30d82730"
+# Set CLOUDFLARE_ACCOUNT_ID via wrangler:
+#   wrangler secret put CLOUDFLARE_ACCOUNT_ID
+# (or here as a [vars] entry — it's not a secret, but it's account-private.)
+# Email Routing catch-all directs mail here; email-receiver Worker is
+# deployed via wrangler-email-receiver.toml and looks up the tenant in KV
+# to find each user's tunnel + per-tenant HMAC secret.
+EMAIL_RECEIVER_WORKER = "rainbow-email-receiver"
+
+[[kv_namespaces]]
+binding = "SUBDOMAINS"
+id = "94f896346aa6424e9302416074092f8f"
+
+# Secrets — set with `wrangler secret put`:
+#   CLOUDFLARE_OPERATOR_TOKEN  Account:Tunnel:Edit + Zone:DNS:Edit + Zone:Email Routing Rules:Edit
+#   CLOUDFLARE_ACCOUNT_ID      operator's account UUID (visible in dashboard right sidebar)
+#   API_SECRET                 long random; setup-mode container uses this as Bearer

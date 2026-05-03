@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Rainbow Configuration",
+  "description": "Schema for rainbow.yaml configuration file",
+  "type": "object",
+  "required": ["rainbow", "domain"],
+  "properties": {
+    "rainbow": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" }
+      },
+      "required": ["version"]
+    },
+    "domain": {
+      "type": "object",
+      "required": ["primary"],
+      "properties": {
+        "primary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "cloudflare": {
+      "type": "object",
+      "properties": {
+        "zone_id": { "type": "string" },
+        "tunnel_id": { "type": "string" }
+      }
+    },
+    "admin": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" }
+      }
+    },
+    "services": {
+      "type": "object",
+      "properties": {
+        "postgres": { "type": "object" },
+        "redis": { "type": "object" },
+        "caddy": { "type": "object" },
+        "cloudflared": { "type": "object" },
+        "authentik": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } }
+        },
+        "immich": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "upload_path": { "type": "string" },
+            "enable_ml": { "type": "boolean" }
+          }
+        },
+        "stalwart": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "data_path": { "type": "string" },
+            "domains": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "cryptpad": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } }
+        },
+        "seafile": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "data_path": { "type": "string" }
+          }
+        },
+        "jellyfin": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "media_paths": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "minecraft": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "memory": { "type": "string" },
+            "server_name": { "type": "string" },
+            "max_players": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "backups": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "schedule": { "type": "string" },
+        "repository": { "type": "string" },
+        "retention": {
+          "type": "object",
+          "properties": {
+            "keep_daily": { "type": "integer", "minimum": 0 },
+            "keep_weekly": { "type": "integer", "minimum": 0 },
+            "keep_monthly": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "ai": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "model": { "type": "string" }
+      }
+    }
+  }
+}

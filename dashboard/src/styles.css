@@ -1,0 +1,119 @@
+/* ============================================================
+   Rainbow Dashboard — supplements the design tokens declared
+   in index.html with component-pattern overrides matching the
+   brand site / wizard. Most views use inline styles via
+   `var(--*)` and just inherit the new colours; this file adds
+   the patterns we can't express via vars alone (button hover
+   shadows, italic display rules, status-pill restraint).
+   ============================================================ */
+
+/* Buttons that opt-in to the brand's hard-offset-shadow hover.
+   Pattern: any <button> styled with background: var(--accent) is
+   the dashboard's "primary" — pick those up via the attribute and
+   give them the brand hover. */
+button {
+  transition: all 220ms var(--ease-out);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* The dashboard's primary-style buttons (ink-on-paper). */
+button[style*="background: var(--accent)"]:not(:disabled):hover,
+a[style*="background: var(--accent)"]:not([aria-disabled]):hover {
+  background: var(--accent-hover) !important;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--border);
+}
+button[style*="background: var(--accent)"]:not(:disabled):active,
+a[style*="background: var(--accent)"]:active {
+  transform: translate(0, 0);
+  box-shadow: 0 0 0 transparent;
+}
+
+/* Italic em treatment in display headings — Fraunces axis swap. */
+h1 em, h2 em, h3 em {
+  font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+}
+
+/* Inputs / textareas: square corners, paper-deep fill, ink-faint
+   border, focus ring is just "border becomes ink". */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="url"],
+input[type="number"],
+input[type="search"],
+textarea,
+select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text);
+  padding: 0.6em 0.8em;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border-color 200ms var(--ease-out);
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="url"]:focus,
+input[type="number"]:focus,
+input[type="search"]:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--text);
+}
+
+/* Links inside main content area get the brand's underline. */
+a {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 2px;
+  transition: text-decoration-color 200ms var(--ease-out);
+}
+a:hover {
+  text-decoration-color: var(--text);
+}
+
+/* Section "eyebrow" — small caps label that the wizard uses, made
+   available globally so views can use `<span class="eyebrow">`. */
+.eyebrow {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Section meta line — number + label, like the wizard's. */
+.section-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.section-meta-num {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text);
+  padding-right: 0.85rem;
+  border-right: 1px solid var(--text);
+}
+.section-meta-label {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}

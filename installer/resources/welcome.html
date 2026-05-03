@@ -1,29 +1,78 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
-    h1 { color: #333; }
-    .highlight { color: #6366f1; font-weight: 600; }
+    body {
+      font-family: "Iowan Old Style", "Hoefler Text", Georgia, serif;
+      color: #1a1612;
+      background: #f4ecd8;
+      padding: 2rem;
+      line-height: 1.55;
+    }
+    h1 {
+      font-weight: 400;
+      font-size: 2.4rem;
+      letter-spacing: -0.025em;
+      line-height: 1.05;
+      margin: 0 0 1rem;
+      max-width: 16ch;
+    }
+    h1 em {
+      font-style: italic;
+    }
+    .lede {
+      font-size: 1.1rem;
+      color: #514738;
+      margin: 0 0 1.5rem;
+      max-width: 50ch;
+    }
+    h3 {
+      font-weight: 400;
+      font-size: 1rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #7a6e5c;
+      margin: 1.5rem 0 0.5rem;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    ul {
+      padding-left: 1.2rem;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 0.95rem;
+    }
+    ul li {
+      margin: 0.4em 0;
+      color: #1a1612;
+    }
+    .fineprint {
+      font-size: 0.85rem;
+      color: #7a6e5c;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      margin-top: 1.5rem;
+    }
   </style>
 </head>
 <body>
-  <h1>Welcome to Rainbow</h1>
-  <p>
-    Rainbow turns your Mac Mini into a complete self-hosted platform:
-    email, photos, files, documents, media, and more.
+  <h1>Take back your <em>digital life</em>.</h1>
+
+  <p class="lede">
+    Rainbow turns this Mac into your personal cloud — email, photos,
+    files, documents, and media, hosted on hardware <em>you own</em>.
   </p>
-  <p>
-    <span class="highlight">Take back your digital life.</span>
-    All your data stays on your hardware.
-  </p>
-  <h3>This installer will:</h3>
+
+  <h3>What this installer does</h3>
   <ul>
-    <li>Install required dependencies (Homebrew, Apple Container, CLI tools)</li>
-    <li>Set up Stalwart mail server and Jellyfin media server</li>
-    <li>Configure container services (Photos, Files, Documents, Auth)</li>
-    <li>Launch the setup wizard for domain and service configuration</li>
+    <li>Installs Homebrew + Apple Container runtime if they're not already here</li>
+    <li>Drops Rainbow at <strong>/Applications/Rainbow/</strong></li>
+    <li>Pulls the container image and starts the setup wizard in your browser</li>
   </ul>
-  <p><strong>Requirements:</strong> Mac Mini M1+, macOS 26+, 16GB+ RAM, internet connection</p>
+
+  <p class="fineprint">
+    Requires macOS 26 (Tahoe) on Apple Silicon, 8 GB RAM, and 30 GB free
+    disk. The wizard finishes everything else — domain choice, services,
+    administrator account.
+  </p>
 </body>
 </html>

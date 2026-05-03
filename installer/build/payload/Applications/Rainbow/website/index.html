@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rainbow — Take Back Your Digital Life</title>
+    <meta
+      name="description"
+      content="Rainbow turns a Mac Mini into your personal cloud. Email, photos, files, documents, media — all on hardware you own. Open source. Self-hosted. Yours."
+    />
+
+    <meta property="og:title" content="Rainbow — Take Back Your Digital Life" />
+    <meta
+      property="og:description"
+      content="A Mac Mini, an installer, and your digital life is yours again."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://rainbow.rocks" />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..900,0..100,0..1&family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <!-- ┌──────────────────────────────────────────────────────┐ -->
+    <!-- │ Masthead: rainbow band + nav                         │ -->
+    <!-- └──────────────────────────────────────────────────────┘ -->
+    <header class="masthead">
+      <div class="masthead-rule" aria-hidden="true"></div>
+
+      <nav class="nav">
+        <a href="/" class="wordmark" aria-label="Rainbow">
+          <svg
+            class="logomark"
+            viewBox="0 0 100 60"
+            fill="none"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M 10 50 A 40 40 0 0 1 90 50" stroke-width="4" />
+            <path d="M 18 50 A 32 32 0 0 1 82 50" stroke-width="4" />
+            <path d="M 26 50 A 24 24 0 0 1 74 50" stroke-width="4" />
+            <path d="M 34 50 A 16 16 0 0 1 66 50" stroke-width="4" />
+            <path d="M 42 50 A 8 8 0 0 1 58 50" stroke-width="4" />
+          </svg>
+          <span class="wordmark-text">rainbow</span>
+        </a>
+        <ul class="nav-links">
+          <li><a href="#services">Services</a></li>
+          <li><a href="#how">How it works</a></li>
+          <li>
+            <a href="https://github.com/youraerials/rainbow" rel="noopener"
+              >GitHub</a
+            >
+          </li>
+          <li><a href="#download" class="nav-cta">Download</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <!-- ┌──────────────────────────────────────────────────────┐ -->
+    <!-- │ Hero — Invocation                                     │ -->
+    <!-- └──────────────────────────────────────────────────────┘ -->
+    <section class="hero" id="top">
+      <div class="hero-meta">
+        <span class="section-number">№ 01</span>
+        <span class="section-tag">Invocation</span>
+      </div>
+
+      <h1 class="hero-headline">
+        <span class="line line-1">Take</span>
+        <span class="line line-2"><em>back</em> &nbsp;your</span>
+        <span class="line line-3"
+          >digital life<span class="period" aria-hidden="true">.</span></span
+        >
+      </h1>
+
+      <div class="hero-body">
+        <p class="hero-lede">
+          Rainbow turns a <strong>Mac&nbsp;Mini</strong> into your personal
+          cloud. Email, photos, files, documents, media, even a Minecraft server
+          — all on hardware <em>you</em> own.
+        </p>
+        <p class="hero-lede dim">
+          No subscriptions. No surveillance. No open ports. Just your data, on
+          your machine, accessible everywhere you go.
+        </p>
+
+        <div class="hero-cta">
+          <a href="#download" class="btn btn-primary">
+            <span class="btn-label">Download for macOS</span>
+            <span class="btn-meta" id="download-meta"
+              >v0.1.0 · 28 MB · macOS 26+</span
+            >
+          </a>
+          <a
+            href="https://github.com/youraerials/rainbow/blob/main/docs/getting-started.md"
+            class="btn btn-ghost"
+            rel="noopener"
+          >
+            Read the docs →
+          </a>
+        </div>
+
+        <p class="hero-fineprint">
+          Free &amp; open source · Apache 2.0 · Made for Apple Silicon
+        </p>
+      </div>
+    </section>
+
+    <!-- ┌──────────────────────────────────────────────────────┐ -->
+    <!-- │ Pull-quote: the why                                  │ -->
+    <!-- └──────────────────────────────────────────────────────┘ -->
+    <section class="manifesto">
+      <div class="manifesto-meta">
+        <span class="section-number">№ 02</span>
+        <span class="section-tag">The principle</span>
+      </div>
+
+      <blockquote class="pullquote">
+        <p>
+          You shouldn&rsquo;t have to <em>rent</em> your own life back from the
+          people <span class="strike">selling it</span> hoarding it.
+        </p>
+        <cite>— The Rainbow project</cite>
+      </blockquote>
+
+      <div class="manifesto-grid">
+        <div class="col">
+          <h3 class="col-title">The problem</h3>
+          <p>
+            Your photos, your email, your documents — all on someone
+            else&rsquo;s computer. Indexed, mined, monetized. One outage and
+            they&rsquo;re gone. One policy change and they&rsquo;re hostage.
+          </p>
+          <p class="dim">
+            The cloud was supposed to be liberation. It became dependence.
+          </p>
+        </div>
+        <div class="col">
+          <h3 class="col-title">The answer</h3>
+          <p>
+            A Mac Mini sits on a shelf. Eight rock-solid open-source services
+            run on it. A small encrypted tunnel connects them to the world.
+            That&rsquo;s the whole architecture.
+          </p>
+          <p class="dim">
+            It costs you a one-time hardware purchase and zero recurring
+            subscriptions.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ┌──────────────────────────────────────────────────────┐ -->
+    <!-- │ Services — typographic index                          │ -->
+    <!-- └──────────────────────────────────────────────────────┘ -->
+    <section class="services" id="services">
+      <div class="services-meta">
+        <span class="section-number">№ 03</span>
+        <span class="section-tag">Eight services. One Mac Mini.</span>
+      </div>
+
+      <h2 class="section-title">
+        A complete digital life,
+        <em>indexed.</em>
+      </h2>
+
+      <ol class="service-list">
+        <li class="service" style="--accent-c: var(--ink)">
+          <span class="service-num">i.</span>
+          <div class="service-body">
+            <h3 class="service-name">Photos &amp; videos</h3>
+            <p class="service-desc">
+              Self-hosted Google Photos, with AI search, face recognition, and
+              mobile auto-upload.
+            </p>
+            <a class="service-tech" href="https://immich.app" rel="noopener"
+              >Immich →</a
+            >
+          </div>
+        </li>
+        <li class="service" style="--accent-c: var(--ink)">
+          <span class="service-num">ii.</span>
+          <div class="service-body">
+            <h3 class="service-name">Email, calendar, contacts</h3>
+            <p class="service-desc">
+              A real mail server. IMAP, SMTP, JMAP, CalDAV, CardDAV — all the
+              protocols, none of the tracking.
+            </p>
+            <a class="service-tech" href="https://stalw.art" rel="noopener"
+              >Stalwart →</a
+            >
+          </div>
+        </li>
+        <li class="service" style="--accent-c: var(--ink)">
+          <span class="service-num">iii.</span>
+          <div class="service-body">
+            <h3 class="service-name">Collaborative documents</h3>
+            <p class="service-desc">
+              Docs, spreadsheets, kanban boards, whiteboards. End-to-end
+              encrypted by default.
+            </p>
+            <a class="service-tech" href="https://cryptpad.org" rel="noopener"
+              >CryptPad →</a
+            >
+          </div>
+        </li>
+        <li class="service" style="--accent-c: var(--ink)">
+          <span class="service-num">iv.</span>
+          <div class="service-body">
+            <h3 class="service-name">File sync &amp; share</h3>
+            <p class="service-desc">
+              Block-level sync across all your devices. Your Dropbox, but
+              it&rsquo;s actually yours.
+            </p>
+            <a
+              class="service-tech"
+              href="https://www.seafile.com"
+              rel="noopener"
+              >Seafile →</a
+            >
+          </div>
+        </li>
+        <li class="service" style="--accent-c: var(--ink)">
+          <span class="service-num">v.</span>
+          <div class="service-body">
+            <h3 class="service-name">Media server</h3>
+            <p class="service-desc">
+              Your movies and music, streamed anywhere. Hardware-accelerated 4K
+              transcoding via Apple Metal.
+            </p>
+            <a class="service-tech" href="https://jellyfin.org" rel="noopener"
+              >Jellyfin →</a
+            >
+          </div>
+        </li>
+        <li class="service" style="--accent-c: var(--ink)">
+          <span class="service-num">vi.</span>
+          <div class="service-body">
+            <h3 class="service-name">Identity &amp; SSO</h3>
+            <p class="service-desc">
+              One login for everything. OAuth2 for the family, friends, the
+              kids&rsquo; accounts.
+            </p>
+            <a class="service-tech" href="https://goauthentik.io" rel="noopener"
+              >Authentik →</a
+            >
+          </div>
+        </li>
+        <li class="service" style="--accent-c: var(--ink)">
+          <span class="service-num">vii.</span>
+          <div class="service-body">
+            <h3 class="service-name">Minecraft server</h3>
+            <p class="service-desc">
+              Because the kids will ask. Paper server, optimized for Apple
+              Silicon.
+            </p>
+            <a class="service-tech" href="https://papermc.io" rel="noopener"
+              >Paper →</a
+            >
+          </div>
+        </li>
+        <li class="service" style="--accent-c: var(--ink)">
+          <span class="service-num">viii.</span>
+          <div class="service-body">
+            <h3 class="service-name">AI app builder</h3>
+            <p class="service-desc">
+              Describe an app to Claude, deploy it on your own server. Family
+              invites, recipe sites, link-in-bios.
+            </p>
+            <a class="service-tech" href="https://anthropic.com" rel="noopener"
+              >Claude API →</a
+            >
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ┌──────────────────────────────────────────────────────┐ -->
+    <!-- │ How it works                                         │ -->
+    <!-- └──────────────────────────────────────────────────────┘ -->
+    <section class="how" id="how">
+      <div class="how-meta">
+        <span class="section-number">№ 04</span>
+        <span class="section-tag">In three steps</span>
+      </div>
+
+      <h2 class="section-title">
+        Setup takes about
+        <em>fifteen minutes.</em>
+      </h2>
+
+      <ol class="steps">
+        <li class="step">
+          <span class="step-num">01</span>
+          <div class="step-body">
+            <h3 class="step-name">Run the installer</h3>
+            <p>
+              Double-click <span class="kbd">Rainbow.pkg</span>. It installs
+              Apple Container, pulls the container images, and installs the CLI.
+              A setup wizard walks you through everything.
+            </p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step-num">02</span>
+          <div class="step-body">
+            <h3 class="step-name">Pick your domain</h3>
+            <p>
+              Claim a free <code>yourname.rainbow.rocks</code> subdomain — or
+              bring your own. Cloudflare handles DNS, certificates, and a tunnel
+              so you don&rsquo;t open any ports.
+            </p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step-num">03</span>
+          <div class="step-body">
+            <h3 class="step-name">Use it.</h3>
+            <p>
+              Photos sync from your phone. Mail flows. Files share. Media
+              streams. Backups run nightly and encrypt before they leave the
+              house.
+            </p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ┌──────────────────────────────────────────────────────┐ -->
+    <!-- │ Architecture diagram                                 │ -->
+    <!-- └──────────────────────────────────────────────────────┘ -->
+    <section class="architecture">
+      <div class="arch-meta">
+        <span class="section-number">№ 05</span>
+        <span class="section-tag">The whole system</span>
+      </div>
+
+      <h2 class="section-title">
+        How the pieces
+        <em>fit together.</em>
+      </h2>
+
+      <figure class="arch-figure">
+        <svg
+          class="arch-svg"
+          viewBox="0 0 1000 920"
+          role="img"
+          aria-labelledby="arch-title arch-desc"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <title id="arch-title">Rainbow system architecture</title>
+          <desc id="arch-desc">
+            External traffic flows from the internet through Cloudflare's edge
+            into an outbound-only tunnel, lands at Caddy, and is routed to one
+            of five services: Immich, Stalwart, CryptPad, Seafile, or Authentik.
+            Those services share a Postgres database and a Valkey cache, both of
+            which sit on the user's local disk. Restic backs up the data,
+            encrypted, to off-site S3-compatible storage.
+          </desc>
+
+          <defs>
+            <marker
+              id="arrowhead"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="5"
+              markerHeight="5"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#1a1612" />
+            </marker>
+            <style>
+              /* SVG-scoped styles — guaranteed to apply regardless of
+                 external stylesheet caching or specificity quirks. */
+              .arch-box {
+                fill: #f4ecd8;
+                stroke: #1a1612;
+                stroke-width: 1.25;
+              }
+              .arch-box-edge {
+                stroke-width: 1.5;
+              }
+              .arch-line {
+                stroke: #1a1612;
+                stroke-width: 1.1;
+                fill: none;
+              }
+              .arch-tickline {
+                stroke: #7a6e5c;
+                stroke-width: 1;
+                fill: none;
+              }
+              .arch-divider {
+                stroke: #b3a888;
+                stroke-width: 1;
+                fill: none;
+              }
+              .arch-rule {
+                stroke: #b3a888;
+                stroke-width: 0.75;
+                fill: none;
+              }
+              .arch-tier-label {
+                font-family: "Bricolage Grotesque", system-ui, sans-serif;
+                font-size: 11px;
+                font-weight: 500;
+                letter-spacing: 0.22em;
+                fill: #514738;
+              }
+              .arch-name {
+                font-family: "Fraunces", Georgia, serif;
+                font-style: italic;
+                font-size: 26px;
+                font-weight: 400;
+                fill: #1a1612;
+                letter-spacing: -0.01em;
+              }
+              .arch-name-sm {
+                font-size: 22px;
+              }
+              .arch-role {
+                font-family: "Bricolage Grotesque", system-ui, sans-serif;
+                font-size: 10.5px;
+                font-weight: 500;
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+                fill: #7a6e5c;
+              }
+              .arch-annot {
+                font-family: "Fraunces", Georgia, serif;
+                font-style: italic;
+                font-size: 13px;
+                fill: #514738;
+              }
+              .arch-fig-mark {
+                font-family: "Bricolage Grotesque", system-ui, sans-serif;
+                font-size: 10px;
+                font-weight: 500;
+                letter-spacing: 0.18em;
+                fill: #7a6e5c;
+              }
+              .arch-arrow-glyph {
+                font-family: "Bricolage Grotesque", system-ui, sans-serif;
+                font-style: normal;
+                font-weight: 300;
+                font-size: 0.85em;
+                fill: #7a6e5c;
+              }
+              /* Inverted card: Restic / S3 */
+              .arch-card-inverted .arch-box-backup {
+                fill: #1a1612;
+                stroke: #1a1612;
+              }
+              .arch-card-inverted .arch-name {
+                fill: #f4ecd8;
+              }
+              .arch-card-inverted .arch-role {
+                fill: #b3a888;
+              }
+              .arch-card-inverted .arch-arrow-glyph {
+                fill: #b3a888;
+              }
+            </style>
+          </defs>
+
+          <!-- ─────────── INTERNET ─────────── -->
+          <g class="arch-tier">
+            <text x="500" y="40" class="arch-tier-label" text-anchor="middle">
+              — THE OUTSIDE WORLD —
+            </text>
+          </g>
+
+          <!-- arrow: internet → cloudflare -->
+          <line
+            class="arch-line"
+            x1="500"
+            y1="62"
+            x2="500"
+            y2="100"
+            marker-end="url(#arrowhead)"
+          />
+
+          <!-- ─────────── CLOUDFLARE EDGE ─────────── -->
+          <rect
+            class="arch-box arch-box-edge"
+            x="270"
+            y="108"
+            width="460"
+            height="80"
+          />
+          <text x="500" y="143" class="arch-name" text-anchor="middle">
+            Cloudflare edge
+          </text>
+          <text x="500" y="167" class="arch-role" text-anchor="middle">
+            DNS · TLS · global routing
+          </text>
+
+          <!-- tunnel arrow with marginalia -->
+          <line
+            class="arch-line"
+            x1="500"
+            y1="188"
+            x2="500"
+            y2="262"
+            marker-end="url(#arrowhead)"
+          />
+          <g class="arch-annot-group">
+            <line class="arch-tickline" x1="510" y1="225" x2="555" y2="225" />
+            <text x="565" y="219" class="arch-annot">
+              outbound tunnel only —
+            </text>
+            <text x="565" y="237" class="arch-annot">
+              no open ports on your router.
+            </text>
+          </g>
+
+          <!-- ─────────── CADDY ─────────── -->
+          <rect class="arch-box" x="340" y="270" width="320" height="80" />
+          <text x="500" y="305" class="arch-name" text-anchor="middle">
+            Caddy
+          </text>
+          <text x="500" y="329" class="arch-role" text-anchor="middle">
+            reverse proxy
+          </text>
+
+          <!-- vertical out of caddy + horizontal trunk -->
+          <line class="arch-line" x1="500" y1="350" x2="500" y2="395" />
+          <line class="arch-line" x1="100" y1="395" x2="900" y2="395" />
+
+          <!-- service drops -->
+          <line
+            class="arch-line"
+            x1="100"
+            y1="395"
+            x2="100"
+            y2="430"
+            marker-end="url(#arrowhead)"
+          />
+          <line
+            class="arch-line"
+            x1="300"
+            y1="395"
+            x2="300"
+            y2="430"
+            marker-end="url(#arrowhead)"
+          />
+          <line
+            class="arch-line"
+            x1="500"
+            y1="395"
+            x2="500"
+            y2="430"
+            marker-end="url(#arrowhead)"
+          />
+          <line
+            class="arch-line"
+            x1="700"
+            y1="395"
+            x2="700"
+            y2="430"
+            marker-end="url(#arrowhead)"
+          />
+          <line
+            class="arch-line"
+            x1="900"
+            y1="395"
+            x2="900"
+            y2="430"
+            marker-end="url(#arrowhead)"
+          />
+
+          <!-- ─────────── 5 SERVICES ─────────── -->
+          <g>
+            <rect
+              class="arch-box arch-box-svc"
+              x="32"
+              y="438"
+              width="136"
+              height="84"
+            />
+            <text
+              x="100"
+              y="474"
+              class="arch-name arch-name-sm"
+              text-anchor="middle"
+            >
+              Immich
+            </text>
+            <text x="100" y="498" class="arch-role" text-anchor="middle">
+              photos
+            </text>
+          </g>
+          <g>
+            <rect
+              class="arch-box arch-box-svc"
+              x="232"
+              y="438"
+              width="136"
+              height="84"
+            />
+            <text
+              x="300"
+              y="474"
+              class="arch-name arch-name-sm"
+              text-anchor="middle"
+            >
+              Stalwart
+            </text>
+            <text x="300" y="498" class="arch-role" text-anchor="middle">
+              email
+            </text>
+          </g>
+          <g>
+            <rect
+              class="arch-box arch-box-svc"
+              x="432"
+              y="438"
+              width="136"
+              height="84"
+            />
+            <text
+              x="500"
+              y="474"
+              class="arch-name arch-name-sm"
+              text-anchor="middle"
+            >
+              CryptPad
+            </text>
+            <text x="500" y="498" class="arch-role" text-anchor="middle">
+              documents
+            </text>
+          </g>
+          <g>
+            <rect
+              class="arch-box arch-box-svc"
+              x="632"
+              y="438"
+              width="136"
+              height="84"
+            />
+            <text
+              x="700"
+              y="474"
+              class="arch-name arch-name-sm"
+              text-anchor="middle"
+            >
+              Seafile
+            </text>
+            <text x="700" y="498" class="arch-role" text-anchor="middle">
+              files
+            </text>
+          </g>
+          <g>
+            <rect
+              class="arch-box arch-box-svc"
+              x="832"
+              y="438"
+              width="136"
+              height="84"
+            />
+            <text
+              x="900"
+              y="474"
+              class="arch-name arch-name-sm"
+              text-anchor="middle"
+            >
+              Authentik
+            </text>
+            <text x="900" y="498" class="arch-role" text-anchor="middle">
+              auth
+            </text>
+          </g>
+
+          <!-- service rises into shared trunk -->
+          <line class="arch-line" x1="100" y1="522" x2="100" y2="578" />
+          <line class="arch-line" x1="300" y1="522" x2="300" y2="578" />
+          <line class="arch-line" x1="500" y1="522" x2="500" y2="578" />
+          <line class="arch-line" x1="700" y1="522" x2="700" y2="578" />
+          <line class="arch-line" x1="900" y1="522" x2="900" y2="578" />
+          <line class="arch-line" x1="100" y1="578" x2="900" y2="578" />
+          <line
+            class="arch-line"
+            x1="500"
+            y1="578"
+            x2="500"
+            y2="600"
+            marker-end="url(#arrowhead)"
+          />
+
+          <!-- "+ more" marginalia, centered between service row and trunk.
+               Rendered after the riser lines so the paper-colored mask
+               punches through them — a typeset-label-interrupting-a-line
+               convention from technical drawings. -->
+          <g>
+            <rect
+              x="298"
+              y="540"
+              width="404"
+              height="14"
+              fill="#f4ecd8"
+              stroke="none"
+            />
+            <text
+              x="500"
+              y="551"
+              class="arch-annot"
+              text-anchor="middle"
+              style="opacity: 0.65"
+            >
+              + Jellyfin and PaperMC also run as Apple containers.
+            </text>
+          </g>
+
+          <!-- ─────────── SHARED INFRA (Postgres + Valkey) ─────────── -->
+          <rect
+            class="arch-box arch-box-data"
+            x="290"
+            y="608"
+            width="420"
+            height="92"
+          />
+          <line
+            class="arch-divider"
+            x1="500"
+            y1="608"
+            x2="500"
+            y2="700"
+            stroke-dasharray="2,4"
+          />
+          <text
+            x="395"
+            y="642"
+            class="arch-name arch-name-sm"
+            text-anchor="middle"
+          >
+            Postgres
+          </text>
+          <text x="395" y="666" class="arch-role" text-anchor="middle">
+            shared database
+          </text>
+          <text
+            x="605"
+            y="642"
+            class="arch-name arch-name-sm"
+            text-anchor="middle"
+          >
+            Valkey
+          </text>
+          <text x="605" y="666" class="arch-role" text-anchor="middle">
+            cache
+          </text>
+
+          <!-- annotation right of postgres/valkey -->
+          <g class="arch-annot-group">
+            <line class="arch-tickline" x1="720" y1="654" x2="765" y2="654" />
+            <text x="775" y="648" class="arch-annot">on your disk —</text>
+            <text x="775" y="666" class="arch-annot">
+              your house, your data.
+            </text>
+          </g>
+
+          <!-- arrow down to backup -->
+          <line
+            class="arch-line"
+            x1="500"
+            y1="700"
+            x2="500"
+            y2="752"
+            marker-end="url(#arrowhead)"
+          />
+
+          <!-- ─────────── RESTIC → S3 (inverted card) ─────────── -->
+          <g class="arch-card-inverted">
+            <rect
+              class="arch-box arch-box-backup"
+              x="290"
+              y="760"
+              width="420"
+              height="92"
+            />
+            <text
+              x="500"
+              y="796"
+              class="arch-name arch-name-sm"
+              text-anchor="middle"
+            >
+              Restic
+              <tspan class="arch-arrow-glyph" dx="6" dy="-1">→</tspan>
+              S3
+            </text>
+            <text x="500" y="820" class="arch-role" text-anchor="middle">
+              offsite encrypted backup
+            </text>
+          </g>
+
+          <!-- annotation right of backup -->
+          <g class="arch-annot-group">
+            <line class="arch-tickline" x1="720" y1="806" x2="765" y2="806" />
+            <text x="775" y="800" class="arch-annot">encrypted before</text>
+            <text x="775" y="818" class="arch-annot">
+              it leaves — you hold the key.
+            </text>
+          </g>
+
+          <!-- bottom rule + caption mark -->
+          <line class="arch-rule" x1="40" y1="890" x2="960" y2="890" />
+          <text x="40" y="908" class="arch-fig-mark">FIG. № 1</text>
+          <text x="960" y="908" class="arch-fig-mark" text-anchor="end">
+            RAINBOW SYSTEM ARCHITECTURE
+          </text>
+        </svg>
+
+        <figcaption class="arch-caption">
+          Every external request enters through Cloudflare and rides an
+          outbound-only tunnel to your machine. Data lives on your disk. Backups
+          encrypt before they leave the house — and the key stays with you.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- ┌──────────────────────────────────────────────────────┐ -->
+    <!-- │ Download                                             │ -->
+    <!-- └──────────────────────────────────────────────────────┘ -->
+    <section class="download" id="download">
+      <div class="download-meta">
+        <span class="section-number">№ 06</span>
+        <span class="section-tag">Get Rainbow</span>
+      </div>
+
+      <h2 class="section-title big">
+        It&rsquo;s yours.
+        <em>Take it.</em>
+      </h2>
+
+      <div class="download-card">
+        <div class="download-card-info">
+          <div class="download-version">
+            <span class="dv-label">Version</span>
+            <span class="dv-value">0.1.0</span>
+          </div>
+          <div class="download-version">
+            <span class="dv-label">Size</span>
+            <span class="dv-value">28 MB</span>
+          </div>
+          <div class="download-version">
+            <span class="dv-label">Requires</span>
+            <span class="dv-value">macOS 26 · Apple Silicon</span>
+          </div>
+          <div class="download-version">
+            <span class="dv-label">Recommended</span>
+            <span class="dv-value">16 GB RAM, 512 GB storage</span>
+          </div>
+        </div>
+
+        <div class="download-actions">
+          <a
+            href="https://github.com/youraerials/rainbow/releases/latest/download/Rainbow.pkg"
+            class="btn btn-primary btn-lg"
+          >
+            <span class="btn-label">Download Rainbow</span>
+            <span class="btn-meta">.pkg · macOS</span>
+          </a>
+          <a
+            href="https://github.com/youraerials/rainbow"
+            class="btn btn-link"
+            rel="noopener"
+            >View source on GitHub →</a
+          >
+          <a
+            href="https://github.com/youraerials/rainbow/releases"
+            class="btn btn-link"
+            rel="noopener"
+            >All releases →</a
+          >
+        </div>
+      </div>
+
+      <details class="download-checksum">
+        <summary>Checksums &amp; signatures</summary>
+        <dl>
+          <dt>SHA-256</dt>
+          <dd><code>a1b2c3d4e5f6...verify after release</code></dd>
+          <dt>Signed by</dt>
+          <dd>Apple Developer ID · Notarized</dd>
+        </dl>
+      </details>
+    </section>
+
+    <!-- ┌──────────────────────────────────────────────────────┐ -->
+    <!-- │ Footer                                               │ -->
+    <!-- └──────────────────────────────────────────────────────┘ -->
+    <footer class="footer">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <span class="footer-mark">
+            <svg
+              class="logomark logomark-sm"
+              viewBox="0 0 100 60"
+              fill="none"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M 10 50 A 40 40 0 0 1 90 50" stroke-width="4" />
+              <path d="M 18 50 A 32 32 0 0 1 82 50" stroke-width="4" />
+              <path d="M 26 50 A 24 24 0 0 1 74 50" stroke-width="4" />
+              <path d="M 34 50 A 16 16 0 0 1 66 50" stroke-width="4" />
+              <path d="M 42 50 A 8 8 0 0 1 58 50" stroke-width="4" />
+            </svg>
+            <span>rainbow</span>
+          </span>
+          <p class="footer-tagline">Take back your digital life.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <ul>
+            <li><a href="https://github.com/youraerials/rainbow">GitHub</a></li>
+            <li>
+              <a
+                href="https://github.com/youraerials/rainbow/blob/main/docs/getting-started.md"
+                >Documentation</a
+              >
+            </li>
+            <li>
+              <a href="https://github.com/youraerials/rainbow/blob/main/LICENSE"
+                >License</a
+              >
+            </li>
+            <li>
+              <a href="https://github.com/youraerials/rainbow/blob/main/NOTICE"
+                >Attribution</a
+              >
+            </li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Built on</h4>
+          <ul class="footer-creds">
+            <li>Immich · Stalwart · CryptPad</li>
+            <li>Jellyfin · Seafile · Authentik</li>
+            <li>PostgreSQL · Valkey · Caddy</li>
+            <li>Apple Container · Cloudflare</li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Stay close</h4>
+          <ul>
+            <li>
+              <a href="https://github.com/youraerials/rainbow/discussions"
+                >Discussions</a
+              >
+            </li>
+            <li>
+              <a href="https://github.com/youraerials/rainbow/issues">Issues</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span>Apache 2.0 · Open source forever</span>
+        <span class="footer-credo"><em>Made with care, not capital.</em></span>
+      </div>
+    </footer>
+
+    <script>
+      // Tiny vanilla JS — detect macOS for the download button hint.
+      // Detect Apple Silicon if possible; otherwise just show generic hint.
+      (function () {
+        var ua = navigator.userAgent || "";
+        var meta = document.getElementById("download-meta");
+        if (!meta) return;
+
+        var isMac = /Mac/.test(ua);
+        var isIntel = /Intel/.test(ua);
+
+        if (isMac && isIntel) {
+          meta.textContent = "v0.1.0 · Apple Silicon required";
+        } else if (!isMac) {
+          meta.textContent = "v0.1.0 · macOS only · for now";
+        }
+      })();
+    </script>
+  </body>
+</html>

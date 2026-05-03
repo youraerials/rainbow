@@ -7,13 +7,32 @@ import { SettingsView } from "./views/SettingsView";
 import { DomainsView } from "./views/DomainsView";
 
 const navItems = [
-  { path: "/", label: "Home", icon: "H" },
-  { path: "/services", label: "Services", icon: "S" },
-  { path: "/builder", label: "App Builder", icon: "A" },
-  { path: "/backups", label: "Backups", icon: "B" },
-  { path: "/domains", label: "Domains", icon: "D" },
-  { path: "/settings", label: "Settings", icon: "G" },
+  { path: "/", label: "Home" },
+  { path: "/services", label: "Services" },
+  { path: "/builder", label: "App Builder" },
+  { path: "/backups", label: "Backups" },
+  { path: "/domains", label: "Domains" },
+  { path: "/settings", label: "Settings" },
 ];
+
+function Logomark() {
+  return (
+    <svg
+      viewBox="0 0 100 60"
+      width={32}
+      height={19}
+      fill="none"
+      stroke="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M 10 50 A 40 40 0 0 1 90 50" strokeWidth="4" />
+      <path d="M 18 50 A 32 32 0 0 1 82 50" strokeWidth="4" />
+      <path d="M 26 50 A 24 24 0 0 1 74 50" strokeWidth="4" />
+      <path d="M 34 50 A 16 16 0 0 1 66 50" strokeWidth="4" />
+      <path d="M 42 50 A 8 8 0 0 1 58 50" strokeWidth="4" />
+    </svg>
+  );
+}
 
 export function App() {
   return (
@@ -21,9 +40,12 @@ export function App() {
       <div style={{ display: "flex", minHeight: "100vh" }}>
         <nav style={styles.sidebar}>
           <div style={styles.logo}>
-            <span style={styles.logoText}>rainbow</span>
-            <span style={styles.version}>v0.1.0</span>
+            <span style={styles.logomark}>
+              <Logomark />
+            </span>
+            <span style={styles.wordmark}>rainbow</span>
           </div>
+
           <div style={styles.nav}>
             {navItems.map((item) => (
               <NavLink
@@ -35,11 +57,11 @@ export function App() {
                   ...(isActive ? styles.navItemActive : {}),
                 })}
               >
-                <span style={styles.navIcon}>{item.icon}</span>
                 {item.label}
               </NavLink>
             ))}
           </div>
+
           <div style={styles.sidebarFooter}>
             <a
               href="https://github.com/youraerials/rainbow"
@@ -54,6 +76,7 @@ export function App() {
             </a>
           </div>
         </nav>
+
         <main style={styles.main}>
           <Routes>
             <Route path="/" element={<HomeView />} />
@@ -73,76 +96,74 @@ const styles: Record<string, React.CSSProperties> = {
   sidebar: {
     width: 220,
     background: "var(--surface)",
-    borderRight: "1px solid var(--border)",
+    borderRight: "1px solid var(--text)",
     display: "flex",
     flexDirection: "column",
-    padding: "16px 0",
+    padding: 0,
     flexShrink: 0,
   },
   logo: {
-    padding: "0 20px 20px",
-    borderBottom: "1px solid var(--border)",
+    padding: "1.4rem 1.25rem 1.25rem",
+    borderBottom: "1px solid var(--text)",
     display: "flex",
-    alignItems: "baseline",
-    gap: 8,
+    alignItems: "center",
+    gap: "0.6rem",
+    color: "var(--text)",
   },
-  logoText: {
-    fontSize: 20,
-    fontWeight: 700,
-    color: "var(--accent)",
-    letterSpacing: "-0.5px",
+  logomark: {
+    color: "var(--text)",
+    display: "inline-flex",
   },
-  version: {
-    fontSize: 11,
-    color: "var(--text-dim)",
+  wordmark: {
+    fontFamily: "var(--font-display)",
+    fontStyle: "italic",
+    fontSize: "1.55rem",
+    fontWeight: 500,
+    letterSpacing: "-0.03em",
+    color: "var(--text)",
+    fontVariationSettings: '"opsz" 60, "SOFT" 80, "WONK" 0',
   },
   nav: {
     flex: 1,
-    padding: "12px 8px",
+    padding: "1rem 0",
     display: "flex",
     flexDirection: "column",
-    gap: 2,
+    gap: 0,
   },
   navItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "8px 12px",
-    borderRadius: "var(--radius)",
+    display: "block",
+    padding: "0.75rem 1.25rem",
     color: "var(--text-dim)",
     textDecoration: "none",
-    fontSize: 14,
-    transition: "all 0.15s",
+    fontSize: "0.95rem",
+    fontFamily: "var(--font-body)",
+    borderLeft: "3px solid transparent",
+    transition: "all 200ms var(--ease-out)",
   },
   navItemActive: {
-    background: "var(--accent)",
-    color: "#fff",
-  },
-  navIcon: {
-    width: 20,
-    height: 20,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 12,
-    fontWeight: 600,
-    background: "rgba(255,255,255,0.1)",
-    borderRadius: 4,
+    color: "var(--text)",
+    borderLeftColor: "var(--text)",
+    background: "var(--surface-hover)",
+    fontWeight: 500,
   },
   sidebarFooter: {
-    padding: "12px 20px",
+    padding: "1rem 1.25rem",
     borderTop: "1px solid var(--border)",
     display: "flex",
-    gap: 16,
+    gap: "1rem",
   },
   footerLink: {
     color: "var(--text-dim)",
     textDecoration: "none",
-    fontSize: 12,
+    fontSize: "0.78rem",
+    letterSpacing: "0.16em",
+    textTransform: "uppercase",
+    fontWeight: 500,
   },
   main: {
     flex: 1,
-    padding: 32,
+    padding: "clamp(2rem, 4vw, 3rem)",
     overflowY: "auto",
+    maxWidth: 1280,
   },
 };

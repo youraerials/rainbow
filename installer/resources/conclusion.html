@@ -1,34 +1,74 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
-    h1 { color: #22c55e; }
-    code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+    body {
+      font-family: "Iowan Old Style", "Hoefler Text", Georgia, serif;
+      color: #1a1612;
+      background: #f4ecd8;
+      padding: 2rem;
+      line-height: 1.55;
+    }
+    h1 {
+      font-weight: 400;
+      font-size: 2.4rem;
+      letter-spacing: -0.025em;
+      line-height: 1.05;
+      margin: 0 0 1rem;
+    }
+    h1 em { font-style: italic; }
+    .lede {
+      font-size: 1.1rem;
+      color: #514738;
+      margin: 0 0 1.5rem;
+      max-width: 50ch;
+    }
+    h3 {
+      font-weight: 400;
+      font-size: 1rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #7a6e5c;
+      margin: 1.5rem 0 0.5rem;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    code {
+      background: #e3d6b8;
+      border: 1px solid #b3a888;
+      border-radius: 2px;
+      padding: 0.1em 0.4em;
+      font-family: "SF Mono", "Menlo", monospace;
+      font-size: 0.92em;
+    }
+    .fineprint {
+      font-size: 0.85rem;
+      color: #7a6e5c;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
   </style>
 </head>
 <body>
-  <h1>Installation Complete</h1>
-  <p>Rainbow has been installed to <code>/opt/rainbow</code>.</p>
+  <h1>Almost <em>there</em>.</h1>
 
-  <h3>Next Steps</h3>
-  <ol>
-    <li>The <strong>Setup Wizard</strong> should launch automatically.
-        If not, open Terminal and run: <code>rainbow config edit</code></li>
-    <li>Choose your domain (e.g., <code>yourname.rainbow.rocks</code>)</li>
-    <li>Enter your Cloudflare API token</li>
-    <li>Select which services to enable</li>
-    <li>Start your server: <code>rainbow start</code></li>
-  </ol>
-
-  <h3>Quick Commands</h3>
-  <p>
-    <code>rainbow status</code> — Check all services<br>
-    <code>rainbow start</code> — Start everything<br>
-    <code>rainbow stop</code> — Stop everything<br>
-    <code>rainbow backup</code> — Run a backup<br>
+  <p class="lede">
+    Rainbow is installed at <code>/Applications/Rainbow/</code>. Your
+    browser is opening the setup wizard — finish there.
   </p>
 
-  <p>Documentation: <code>/opt/rainbow/docs/getting-started.md</code></p>
+  <h3>If your browser didn't open</h3>
+  <p>
+    Run the URL stashed at <code>/Applications/Rainbow/.wizard-url</code>:
+  </p>
+  <p>
+    <code>open "$(cat /Applications/Rainbow/.wizard-url)"</code>
+  </p>
+
+  <h3>If something went wrong</h3>
+  <p class="fineprint">
+    The install log is at <code>/tmp/rainbow-install.log</code>. To
+    re-run setup at any time, restart the wizard container with
+    <code>open "$(cat /Applications/Rainbow/.wizard-url)"</code>.
+  </p>
 </body>
 </html>

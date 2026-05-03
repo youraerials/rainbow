@@ -1,0 +1,171 @@
+name: Release
+
+# Builds Rainbow.pkg on tag push and publishes a GitHub Release with it.
+# The .pkg name is normalized to `Rainbow.pkg` (no version suffix) so that
+# https://github.com/<repo>/releases/latest/download/Rainbow.pkg always
+# resolves — that's the URL the brand site's download CTA points at.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write   # creating releases + uploading assets
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve version
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          echo "TAG=$TAG"           >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION"   >> "$GITHUB_ENV"
+          echo "Releasing $TAG (v$VERSION)"
+
+      - name: Install build dependencies
+        run: |
+          brew update
+          brew install yq
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Build dashboard bundle
+        working-directory: dashboard
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build .pkg
+        env:
+          RAINBOW_VERSION: ${{ env.VERSION }}
+        run: |
+          bash installer/build-pkg.sh
+
+      # ─── Optional: codesign + notarize ──────────────────────────
+      # All of this is skipped if the secrets aren't configured. To
+      # enable, set in the repo: APPLE_DEVELOPER_ID, APPLE_INSTALLER_CERT_P12,
+      # APPLE_INSTALLER_CERT_PASSWORD, APPLE_NOTARY_API_KEY,
+      # APPLE_NOTARY_API_KEY_ID, APPLE_NOTARY_API_ISSUER.
+
+      - name: Sign and notarize
+        if: ${{ env.APPLE_DEVELOPER_ID != '' }}
+        env:
+          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+          APPLE_INSTALLER_CERT_P12: ${{ secrets.APPLE_INSTALLER_CERT_P12 }}
+          APPLE_INSTALLER_CERT_PASSWORD: ${{ secrets.APPLE_INSTALLER_CERT_PASSWORD }}
+          APPLE_NOTARY_API_KEY: ${{ secrets.APPLE_NOTARY_API_KEY }}
+          APPLE_NOTARY_API_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+          APPLE_NOTARY_API_ISSUER: ${{ secrets.APPLE_NOTARY_API_ISSUER }}
+        run: |
+          set -e
+          # Import the installer signing cert into a temporary keychain.
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -t 3600 -l "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          echo "$APPLE_INSTALLER_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" \
+            -k "$KEYCHAIN" \
+            -P "$APPLE_INSTALLER_CERT_PASSWORD" \
+            -T /usr/bin/productsign \
+            -T /usr/bin/codesign
+          security list-keychains -s "$KEYCHAIN" $(security list-keychains -d user | tr -d \"\")
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          # Sign
+          PKG="installer/build/Rainbow-${VERSION}.pkg"
+          SIGNED="installer/build/Rainbow-${VERSION}-signed.pkg"
+          productsign --sign "$APPLE_DEVELOPER_ID" "$PKG" "$SIGNED"
+          mv "$SIGNED" "$PKG"
+
+          # Notarize
+          echo "$APPLE_NOTARY_API_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          xcrun notarytool submit "$PKG" \
+            --key "$RUNNER_TEMP/AuthKey.p8" \
+            --key-id "$APPLE_NOTARY_API_KEY_ID" \
+            --issuer "$APPLE_NOTARY_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$PKG"
+
+          # Wipe the temp keychain
+          security delete-keychain "$KEYCHAIN"
+          rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/AuthKey.p8"
+
+      # ─── Normalize asset name + checksum ────────────────────────
+
+      - name: Stage release assets
+        run: |
+          mkdir -p release-assets
+          cp "installer/build/Rainbow-${VERSION}.pkg" release-assets/Rainbow.pkg
+          cd release-assets
+          shasum -a 256 Rainbow.pkg > Rainbow.pkg.sha256
+          # Capture for the release body
+          SHA=$(awk '{print $1}' Rainbow.pkg.sha256)
+          SIZE=$(du -h Rainbow.pkg | awk '{print $1}')
+          echo "SHA256=$SHA"  >> "$GITHUB_ENV"
+          echo "SIZE=$SIZE"   >> "$GITHUB_ENV"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Rainbow ${{ env.VERSION }}
+          generate_release_notes: true
+          files: |
+            release-assets/Rainbow.pkg
+            release-assets/Rainbow.pkg.sha256
+          body: |
+            ## Rainbow ${{ env.VERSION }} for macOS
+
+            **Download:** [`Rainbow.pkg`](https://github.com/${{ github.repository }}/releases/download/${{ env.TAG }}/Rainbow.pkg) (${{ env.SIZE }})
+
+            ### Verify the download
+
+            ```bash
+            shasum -a 256 -c Rainbow.pkg.sha256
+            ```
+
+            Expected SHA-256:
+
+            ```
+            ${{ env.SHA256 }}  Rainbow.pkg
+            ```
+
+            ### Install
+
+            Double-click the `.pkg`. The installer:
+
+            - Verifies your Mac (macOS 26+ on Apple Silicon, 8 GB RAM, 30 GB free)
+            - Drops Rainbow at `/Applications/Rainbow/`
+            - Installs Homebrew + Apple Container if missing
+            - Builds the Rainbow image and starts the setup wizard in your browser
+
+            See [docs/getting-started.md](https://github.com/${{ github.repository }}/blob/${{ env.TAG }}/docs/getting-started.md) for the post-install walkthrough.
