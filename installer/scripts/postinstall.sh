@@ -79,16 +79,44 @@ export PATH="$BIN_DIR:$PATH"
 toast "Rainbow" "Initializing container runtime"
 
 # ─── Initialize Apple Container ─────────────────────────────────
+# IMPORTANT: invoke the CLI at /usr/local/bin/container (where Apple's
+# .pkg actually installs it), NOT via our $BIN_DIR symlink. The CLI
+# derives CONTAINER_INSTALL_ROOT from its own argv[0] when generating
+# the apiserver's launchd plist — so calling it via a symlink under
+# /Applications/Rainbow/ produces a plist that looks for the apiserver
+# binary + plugins under /Applications/Rainbow/, where they don't
+# exist. That bakes in a broken apiserver state for the rest of the
+# install. See incident notes 2026-05-03.
 log "Starting container system…"
-sudo -u "$PRIMARY_USER" "$BIN_DIR/container" system start --enable-kernel-install \
+
+# If an apiserver is already loaded from somewhere else (commonly a
+# prior `brew install container` install, even one that's since been
+# uninstalled — the process keeps running with the deleted binary
+# loaded in memory), bootout so our .pkg-installed apiserver can take
+# over with the correct paths. The bootout does kill any running
+# container runtimes spawned by the old apiserver, but a Rainbow
+# install is replacing those anyway.
+EXISTING_PROGRAM=$(sudo -u "$PRIMARY_USER" launchctl print \
+    "gui/$USER_ID/com.apple.container.apiserver" 2>/dev/null \
+    | awk '/^[[:space:]]*program = /{print $3; exit}')
+if [ -n "$EXISTING_PROGRAM" ] \
+        && [ "$EXISTING_PROGRAM" != "/usr/local/bin/container-apiserver" ]; then
+    log "Existing apiserver loaded from $EXISTING_PROGRAM — replacing with the one from /usr/local/bin"
+    sudo -u "$PRIMARY_USER" launchctl bootout \
+        "gui/$USER_ID/com.apple.container.apiserver" \
+        >/dev/null 2>&1 || true
+    sleep 2
+fi
+
+sudo -u "$PRIMARY_USER" /usr/local/bin/container system start --enable-kernel-install \
     >> "$LOG_FILE" 2>&1 || true
 for _ in $(seq 1 20); do
-    if sudo -u "$PRIMARY_USER" "$BIN_DIR/container" system status >/dev/null 2>&1; then
+    if sudo -u "$PRIMARY_USER" /usr/local/bin/container system status >/dev/null 2>&1; then
         break
     fi
     sleep 2
 done
-sudo -u "$PRIMARY_USER" "$BIN_DIR/container" system status >/dev/null 2>&1 \
+sudo -u "$PRIMARY_USER" /usr/local/bin/container system status >/dev/null 2>&1 \
     || fail "container system never came up"
 
 toast "Rainbow" "Installing host control daemon"

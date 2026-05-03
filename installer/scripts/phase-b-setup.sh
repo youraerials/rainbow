@@ -15,7 +15,10 @@ BIN_DIR="$INSTALL_DIR/bin"
 LOG_FILE="/tmp/rainbow-install.log"
 PLIST="$HOME/Library/LaunchAgents/rocks.rainbow.setup.plist"
 
-log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
+# Plain echo — launchd's StandardOutPath in rocks.rainbow.setup.plist
+# already routes stdout to $LOG_FILE. Don't tee or you'll get duplicate
+# lines.
+log() { echo "[$(date '+%H:%M:%S')] $*"; }
 toast() {
     osascript -e "display notification \"$2\" with title \"$1\"" \
         2>/dev/null || true
