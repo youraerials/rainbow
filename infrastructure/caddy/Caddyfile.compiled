@@ -41,7 +41,15 @@ http://test-photos.rainbow.rocks {
 
 # ─── Email (Stalwart) ────────────────────────────────────────────
 http://test-mail.rainbow.rocks {
-	reverse_proxy 192.168.66.8:8080
+	reverse_proxy 192.168.66.27:8080
+}
+
+# ─── Webmail (Snappymail) ────────────────────────────────────────
+# Browser-based inbox UI. Talks IMAP/SMTP-Submission to the Stalwart
+# container over the frontend network. First-time admin setup at
+# https://<host>/?admin — see services/webmail/README.md.
+http://test-webmail.rainbow.rocks {
+	reverse_proxy 192.168.66.21:8888
 }
 
 # ─── Files (Seafile) ─────────────────────────────────────────────

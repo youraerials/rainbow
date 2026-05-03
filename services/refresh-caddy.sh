@@ -35,6 +35,7 @@ declare -a NAME_PAIRS=(
     "rainbow-seafile:seafile"
     "rainbow-stalwart:stalwart"
     "rainbow-jellyfin:jellyfin"
+    "rainbow-webmail:webmail"
 )
 
 container_ip() {
@@ -89,6 +90,15 @@ caddy_ip=$(wait_for_ip rainbow-caddy) || {
     echo "[refresh-caddy] caddy has no IP after restart" >&2
     exit 1
 }
+
+# Webmail's pre-seeded domain config bakes in Stalwart's IP. Whenever
+# Stalwart restarts and changes IP, webmail's stale config will fail logins
+# until we re-seed. Run the setup hook here unconditionally — it's
+# idempotent and cheap.
+if container inspect rainbow-webmail >/dev/null 2>&1; then
+    bash "$ORCH_DIR/webmail/setup.sh" >/dev/null 2>&1 || \
+        echo "[refresh-caddy] webmail/setup.sh failed (config may be stale)" >&2
+fi
 
 if [ -f "$CFD_SRC" ] && container inspect rainbow-cloudflared >/dev/null 2>&1; then
     sed -e "s|http://caddy:80|http://${caddy_ip}:80|g" \

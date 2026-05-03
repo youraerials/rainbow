@@ -16,6 +16,8 @@ ingress:
     service: http://caddy:80
   - hostname: "{{HOST_PREFIX}}mail.{{ZONE}}"
     service: http://caddy:80
+  - hostname: "{{HOST_PREFIX}}webmail.{{ZONE}}"
+    service: http://caddy:80
   - hostname: "{{HOST_PREFIX}}files.{{ZONE}}"
     service: http://caddy:80
   - hostname: "{{HOST_PREFIX}}docs.{{ZONE}}"

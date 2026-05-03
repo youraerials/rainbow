@@ -44,6 +44,14 @@ http://{{HOST_PREFIX}}mail.{{ZONE}} {
 	reverse_proxy stalwart:8080
 }
 
+# ─── Webmail (Snappymail) ────────────────────────────────────────
+# Browser-based inbox UI. Talks IMAP/SMTP-Submission to the Stalwart
+# container over the frontend network. First-time admin setup at
+# https://<host>/?admin — see services/webmail/README.md.
+http://{{HOST_PREFIX}}webmail.{{ZONE}} {
+	reverse_proxy webmail:8888
+}
+
 # ─── Files (Seafile) ─────────────────────────────────────────────
 http://{{HOST_PREFIX}}files.{{ZONE}} {
 	reverse_proxy seafile:80

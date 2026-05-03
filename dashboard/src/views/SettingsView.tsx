@@ -1,4 +1,5 @@
 import { useEffect, useState, FormEvent } from "react";
+import { OutboundMailSettings } from "./OutboundMailSettings";
 
 interface KeyStatus {
   configured: boolean;
@@ -136,6 +137,8 @@ export function SettingsView() {
           </div>
         )}
       </div>
+
+      <OutboundMailSettings />
 
       <div style={styles.section}>
         <h2 style={styles.sectionTitle}>Configuration</h2>

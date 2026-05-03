@@ -11,6 +11,7 @@ import { adminRouter } from "./admin.js";
 import { appsRouter } from "./apps.js";
 import { servicesControlRouter } from "./services-control.js";
 import { inboundMailRouter } from "./inbound-mail.js";
+import { smarthostRouter } from "./smarthost.js";
 
 export const apiRouter = Router();
 
@@ -47,6 +48,9 @@ apiRouter.use(servicesControlRouter);
 
 // /api/admin/* — admin config (Anthropic key, etc.)
 apiRouter.use("/admin", adminRouter);
+
+// /api/admin/smarthost — outbound SMTP relay configuration
+apiRouter.use("/admin/smarthost", smarthostRouter);
 
 // /api/apps/* — list, get, delete apps + per-app key/value data
 apiRouter.use("/apps", appsRouter);

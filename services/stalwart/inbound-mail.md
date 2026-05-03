@@ -91,9 +91,19 @@ at `https://test-mail.rainbow.rocks/`. If it doesn't:
 - **Multi-user routing.** Every accepted message currently lands in the JMAP
   user's Inbox (the one whose creds are in Keychain). When Rainbow grows
   multi-user we'll route by `To:` header → per-user mailbox.
-- **Outbound mail.** This document is inbound only. Sending requires either
-  a paid SMTP relay (Mailgun/Postmark/SES) or an outbound Worker that proxies
-  Stalwart's submission traffic — separate piece of work.
-- **DKIM signing.** Without outbound, this is moot. When we add outbound,
-  generate the keypair, publish the public TXT record, and point Stalwart's
-  signing config at the private key.
+- **Outbound mail.** Inbound is now wired. For outbound, see the dashboard's
+  **Settings → Outbound Mail** section — Rainbow's supported path is a BYO
+  SMTP smarthost (Resend, Postmark, Amazon SES, Mailgun, or any generic
+  SMTP relay). Direct outbound from a residential Mac Mini is intentionally
+  unsupported because deliverability is poor regardless of how perfect the
+  protocol setup is. See `web/src/services/smarthost.ts` for the relay
+  client and `web/src/api/smarthost.ts` for the admin endpoints.
+- **Snappymail-side outbound.** The smarthost-relay path covers MCP-based
+  sending (apps generated via the App Builder, AI tools). Routing
+  Snappymail's submission traffic through the same smarthost requires
+  Stalwart's outbound queue config, which Stalwart 0.16's admin API
+  doesn't expose cleanly — tracked as a follow-up.
+- **DNS auto-publishing for the relay.** When you add a domain in your
+  smarthost provider's dashboard, they hand you DKIM + SPF TXT records to
+  publish. Right now you copy them into your Cloudflare DNS manually;
+  auto-publishing via our existing Cloudflare API token is on the roadmap.

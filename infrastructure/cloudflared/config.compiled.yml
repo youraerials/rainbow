@@ -10,23 +10,25 @@ credentials-file: /etc/cloudflared/credentials.json
 
 ingress:
   - hostname: "test.rainbow.rocks"
-    service: http://192.168.66.20:80
+    service: http://192.168.66.28:80
   - hostname: "test-auth.rainbow.rocks"
-    service: http://192.168.66.20:80
+    service: http://192.168.66.28:80
   - hostname: "test-photos.rainbow.rocks"
-    service: http://192.168.66.20:80
+    service: http://192.168.66.28:80
   - hostname: "test-mail.rainbow.rocks"
-    service: http://192.168.66.20:80
+    service: http://192.168.66.28:80
+  - hostname: "test-webmail.rainbow.rocks"
+    service: http://192.168.66.28:80
   - hostname: "test-files.rainbow.rocks"
-    service: http://192.168.66.20:80
+    service: http://192.168.66.28:80
   - hostname: "test-docs.rainbow.rocks"
-    service: http://192.168.66.20:80
+    service: http://192.168.66.28:80
   - hostname: "test-docs-sandbox.rainbow.rocks"
-    service: http://192.168.66.20:80
+    service: http://192.168.66.28:80
   - hostname: "test-media.rainbow.rocks"
-    service: http://192.168.66.20:80
+    service: http://192.168.66.28:80
   - hostname: "test-api.rainbow.rocks"
-    service: http://192.168.66.20:80
+    service: http://192.168.66.28:80
 
   # Catch-all (required by cloudflared)
   - service: http_status:404

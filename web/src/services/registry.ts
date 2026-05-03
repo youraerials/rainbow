@@ -55,6 +55,13 @@ export const SERVICES: ServiceDescriptor[] = [
         healthPath: "/login",
     },
     {
+        name: "webmail",
+        slug: "webmail",
+        displayName: "Webmail",
+        description: "Browser inbox (Snappymail)",
+        healthPath: "/",
+    },
+    {
         name: "seafile",
         slug: "files",
         displayName: "Seafile",

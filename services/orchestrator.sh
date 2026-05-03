@@ -327,6 +327,25 @@ start_web() {
         >/dev/null
 }
 
+start_webmail() {
+    orch_info "Starting webmail (Snappymail)..."
+    # Snappymail is a PHP/JS webmail SPA — talks IMAP+SMTP-submission over
+    # the frontend network to the Stalwart container. No DB; settings live in
+    # a small data volume so admin config + per-user state survive restarts.
+    # The image's actual data dir is /var/lib/snappymail/_data_ (NOT
+    # /snappymail/data, which is a leftover path that doesn't get used) —
+    # make sure the mount target matches or login state and per-domain
+    # config get wiped on every container recreate.
+    # The post-start hook services/webmail/setup.sh pre-seeds a domain config
+    # pointing at Stalwart's current IP so users don't need admin-panel setup.
+    ensure_volume rainbow-webmail-data
+    replace_container rainbow-webmail \
+        --network frontend \
+        --mount "type=volume,source=rainbow-webmail-data,target=/var/lib/snappymail/_data_" \
+        docker.io/djmaze/snappymail:latest \
+        >/dev/null
+}
+
 start_jellyfin() {
     orch_info "Starting Jellyfin..."
     ensure_volume rainbow-jellyfin-config
@@ -584,6 +603,11 @@ start_minimum() {
     jellyfin_ip=$(wait_for_ip rainbow-jellyfin) \
         || { orch_err "jellyfin has no IP"; return 1; }
 
+    start_webmail
+    local webmail_ip
+    webmail_ip=$(wait_for_ip rainbow-webmail) \
+        || { orch_err "webmail has no IP"; return 1; }
+
     start_web
     local web_ip
     web_ip=$(wait_for_ip rainbow-web) \
@@ -596,6 +620,7 @@ start_minimum() {
         "seafile=$seafile_ip" \
         "stalwart=$stalwart_ip" \
         "jellyfin=$jellyfin_ip" \
+        "webmail=$webmail_ip" \
         "web=$web_ip"
     start_caddy
     local caddy_ip
@@ -614,6 +639,8 @@ start_minimum() {
         orch_warn "immich post-start setup failed (run services/immich/setup.sh manually)"
     bash "$ORCH_DIR/jellyfin/setup.sh" || \
         orch_warn "jellyfin post-start setup failed (run services/jellyfin/setup.sh manually)"
+    bash "$ORCH_DIR/webmail/setup.sh" || \
+        orch_warn "webmail post-start setup failed (run services/webmail/setup.sh manually)"
 
     local prefix zone host_prefix web_host
     prefix=$(yq eval '.domain.prefix' "$CONFIG_FILE")
@@ -652,6 +679,7 @@ RAINBOW_CONTAINERS=(
     rainbow-seafile
     rainbow-stalwart
     rainbow-jellyfin
+    rainbow-webmail
 )
 
 # Recreate one container with fresh env from the current Keychain + .env.
@@ -692,6 +720,7 @@ restart_one() {
         rainbow-cryptpad) start_cryptpad ;;
         rainbow-stalwart) start_stalwart ;;
         rainbow-jellyfin) start_jellyfin ;;
+        rainbow-webmail)  start_webmail ;;
         rainbow-web)      start_web ;;
         rainbow-caddy)    start_caddy ;;
         rainbow-cloudflared)
