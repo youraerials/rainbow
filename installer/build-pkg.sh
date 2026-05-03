@@ -69,7 +69,8 @@ RSYNC_EXCLUDES=(
     --exclude="*.log"
     --exclude=".env"
     --exclude=".env.local"
-    --exclude="package-lock.json"       # not needed at runtime; saves a few MB
+    # NB: package-lock.json IS needed — the Dockerfile uses `npm ci`
+    # which fails without a lock file. Don't add it to excludes.
 )
 for dir in cli config scripts services cloudflare web app-builder backups docs website; do
     if [ -d "$PROJECT_ROOT/$dir" ]; then
