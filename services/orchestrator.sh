@@ -35,6 +35,21 @@ orch_err()  { echo -e "${RED}[orch]${NC} $*" >&2; }
 
 # ─── Helpers ─────────────────────────────────────────────────────
 
+# A container's reachable-from-the-host-via-loopback isn't what we
+# need. Apple Container's vmnet plugin gives each network a gateway
+# IP that's actually a bridge interface ON THE HOST — `bridge100` etc.
+# host_ip_for_network "frontend" returns that gateway IP, which is
+# what containers attached to frontend should use as RAINBOW_CONTROL_URL
+# to reach the host control daemon. Apple Container doesn't auto-
+# provide host.docker.internal so we have to wire this up ourselves.
+host_ip_for_network() {
+    local net="$1"
+    container network inspect "$net" 2>/dev/null \
+        | yq -p=json '.[0].status.ipv4Gateway // ""' 2>/dev/null \
+        | sed 's|/.*||' \
+        | head -n1
+}
+
 # Get a container's primary IPv4 address (without /24 suffix).
 container_ip() {
     local name="$1"
@@ -290,14 +305,20 @@ start_web() {
     # Host control daemon: lets the dashboard restart/stop/start containers
     # and tail logs without giving the web tier the `container` CLI itself.
     # The daemon runs on the host (services/control/install.sh) and listens
-    # on :9001. Web reaches it at host.docker.internal. If install hasn't
-    # been run, RAINBOW_CONTROL_TOKEN will be empty and /api/services/*/{restart,logs}
-    # will 503.
-    local control_token
+    # on :9001 of every interface. Apple Container 0.11 doesn't provide
+    # host.docker.internal, so we use the `frontend` network's gateway IP
+    # — which is the host's bridge interface for that subnet, reachable
+    # from any container attached to frontend.
+    local control_token control_host
     control_token=$(security find-generic-password -s rainbow-control-token -w 2>/dev/null || echo "")
     if [ -z "$control_token" ]; then
         orch_warn "rainbow-control-token not in Keychain — service restart/logs from dashboard will be unavailable."
         orch_warn "Run services/control/install.sh on the host to enable."
+    fi
+    control_host=$(host_ip_for_network frontend)
+    if [ -z "$control_host" ]; then
+        orch_warn "couldn't resolve frontend network gateway — falling back to host.docker.internal"
+        control_host="host.docker.internal"
     fi
 
     replace_container rainbow-web \
@@ -319,7 +340,7 @@ start_web() {
         --env "POSTGRES_USER=${POSTGRES_USER:-rainbow}" \
         --env "POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}" \
         --env "POSTGRES_WEB_DB=rainbow_web" \
-        --env "RAINBOW_CONTROL_URL=http://host.docker.internal:9001" \
+        --env "RAINBOW_CONTROL_URL=http://${control_host}:9001" \
         --env "RAINBOW_CONTROL_TOKEN=${control_token}" \
         --volume "$RAINBOW_ROOT/dashboard/dist:/usr/share/web/dashboard:ro" \
         --volume "$apps_dir:/var/lib/rainbow/apps" \

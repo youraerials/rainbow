@@ -74,9 +74,14 @@ SUBDOMAIN_API_SECRET=""
 SECRET_FILE="$INSTALL_DIR/installer/.subdomain-api-secret"
 if [ -f "$SECRET_FILE" ]; then
     SUBDOMAIN_API_SECRET=$(cat "$SECRET_FILE")
-    log "Loaded subdomain API secret from .pkg payload."
+    secret_size=$(wc -c < "$SECRET_FILE" | tr -d ' ')
+    if [ -n "$SUBDOMAIN_API_SECRET" ]; then
+        log "Loaded subdomain API secret from .pkg payload ($secret_size bytes)."
+    else
+        log "WARN: $SECRET_FILE exists but is empty — CI build had RAINBOW_SUBDOMAIN_API_SECRET unset."
+    fi
 else
-    log "WARN: subdomain API secret missing - wizard will say 'not configured' at provision."
+    log "WARN: $SECRET_FILE not present — CI didn't embed a secret. Wizard will fail at the claim step."
 fi
 
 CONTROL_TOKEN=$(/usr/bin/security find-generic-password \
@@ -86,12 +91,32 @@ log "Starting setup wizard container..."
 "$BIN_DIR/container" network create frontend >/dev/null 2>&1 || true
 "$BIN_DIR/container" delete --force rainbow-setup >/dev/null 2>&1 || true
 
+# Resolve the host IP the wizard will use to reach the host control
+# daemon. Apple Container 0.11 doesn't provide host.docker.internal —
+# we use the frontend network's gateway IP, which is the host's bridge
+# interface for that subnet (e.g. 192.168.66.1). The daemon listens on
+# 0.0.0.0:9001 so any bridge IP works.
+CONTROL_HOST=""
+for _ in $(seq 1 10); do
+    CONTROL_HOST=$("$BIN_DIR/container" network inspect frontend 2>/dev/null \
+        | "$BIN_DIR/yq" -p=json '.[0].status.ipv4Gateway // ""' 2>/dev/null \
+        | sed 's|/.*||' \
+        | head -n1)
+    if [ -n "$CONTROL_HOST" ] && [ "$CONTROL_HOST" != "null" ]; then break; fi
+    sleep 1
+done
+if [ -z "$CONTROL_HOST" ] || [ "$CONTROL_HOST" = "null" ]; then
+    log "WARN: couldn't resolve frontend gateway — falling back to host.docker.internal"
+    CONTROL_HOST="host.docker.internal"
+fi
+log "Wizard will reach control daemon at $CONTROL_HOST:9001"
+
 "$BIN_DIR/container" run -d --name rainbow-setup \
     --network frontend \
     --env RAINBOW_SETUP_MODE=1 \
     --env "RAINBOW_SUBDOMAIN_WORKER_URL=$SUBDOMAIN_WORKER_URL" \
     --env "RAINBOW_SUBDOMAIN_API_SECRET=$SUBDOMAIN_API_SECRET" \
-    --env RAINBOW_CONTROL_URL=http://host.docker.internal:9001 \
+    --env "RAINBOW_CONTROL_URL=http://${CONTROL_HOST}:9001" \
     --env "RAINBOW_CONTROL_TOKEN=$CONTROL_TOKEN" \
     --env "RAINBOW_ROOT=$INSTALL_DIR" \
     --volume "$HOME/Library/Application Support/Rainbow/setup:/var/lib/rainbow/setup" \

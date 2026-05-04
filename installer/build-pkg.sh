@@ -167,6 +167,13 @@ cp "$PROJECT_ROOT/README.md" "$PAYLOAD_DIR/Applications/Rainbow/"
 cp "$PROJECT_ROOT/LICENSE" "$PAYLOAD_DIR/Applications/Rainbow/" 2>/dev/null || true
 cp "$PROJECT_ROOT/CLAUDE.md" "$PAYLOAD_DIR/Applications/Rainbow/" 2>/dev/null || true
 
+# Double-click reset shortcut. Lands at /Applications/Rainbow/Reset
+# Rainbow.command — Finder runs it in Terminal when the user double-
+# clicks. The reset itself goes through scripts/reset-local.sh.
+cp "$SCRIPT_DIR/resources/Reset Rainbow.command" \
+   "$PAYLOAD_DIR/Applications/Rainbow/Reset Rainbow.command"
+chmod +x "$PAYLOAD_DIR/Applications/Rainbow/Reset Rainbow.command"
+
 # Stamp the version. The dashboard's update banner reads this to decide
 # whether a newer release is available; the host control daemon also
 # returns it from /system/info. upgrade.sh rewrites it on each upgrade.

@@ -48,4 +48,60 @@ if [ ${#ERRORS[@]} -gt 0 ]; then
     for err in "${ERRORS[@]}"; do echo "  • $err"; done
     exit 1
 fi
+
+# ─── Detect existing install + offer to reset ────────────────────
+# Runs as root in the .pkg sandbox. The current /Applications/Rainbow
+# is still the OLD install at this point — payload extraction
+# happens AFTER preinstall returns. So we can read the prior wizard's
+# state, prompt the user, and run the OLD reset-local.sh cleanly
+# before the new payload lands.
+PRIMARY_USER="${USER:-$(stat -f '%Su' /dev/console)}"
+USER_HOME=$(eval echo "~$PRIMARY_USER")
+SETUP_STATE="$USER_HOME/Library/Application Support/Rainbow/setup/setup-state.json"
+PREV_PREFIX=""
+if [ -f "$SETUP_STATE" ]; then
+    PREV_PREFIX=$(grep -oE '"prefix"[[:space:]]*:[[:space:]]*"[^"]*"' "$SETUP_STATE" \
+        | head -1 \
+        | sed -E 's/.*"([^"]*)"$/\1/')
+fi
+
+OLD_RESET_SCRIPT="/Applications/Rainbow/scripts/reset-local.sh"
+if [ -n "$PREV_PREFIX" ] && [ -x "$OLD_RESET_SCRIPT" ]; then
+    DOMAIN="${PREV_PREFIX}.rainbow.rocks"
+    DIALOG_TEXT="Rainbow is already installed on this Mac (subdomain ${DOMAIN}).
+
+You can keep your existing install (the new package will overwrite the install tree but leave your data, containers, and Keychain entries alone) or reset everything for a clean install.
+
+Resetting wipes:
+  • Subdomain claim on rainbow.rocks
+  • All Rainbow containers and ~6 GB of named volumes (photos, files, mail — gone)
+  • Install tree at /Applications/Rainbow
+  • Keychain entries (rainbow-*)
+  • Cloudflare tunnel auth (~/.cloudflared)"
+
+    # osascript runs as user (the GUI session). default button is
+    # the rightmost — we make Keep the default so destructive Reset
+    # requires a deliberate click.
+    BUTTON=$(sudo -u "$PRIMARY_USER" osascript \
+        -e "set theDialog to \"$DIALOG_TEXT\"" \
+        -e "display dialog theDialog buttons {\"Cancel\", \"Reset & install\", \"Keep existing\"} default button \"Keep existing\" cancel button \"Cancel\" with title \"Rainbow installer\" with icon caution" \
+        -e "button returned of result" 2>/dev/null || echo "Cancel")
+
+    case "$BUTTON" in
+        "Reset & install")
+            echo "User chose to reset before installing — running ${OLD_RESET_SCRIPT}"
+            sudo -u "$PRIMARY_USER" -E env \
+                RAINBOW_SUBDOMAIN_NAME="$PREV_PREFIX" \
+                bash "$OLD_RESET_SCRIPT"
+            ;;
+        "Keep existing")
+            echo "User chose to keep existing install — overwriting install tree only"
+            ;;
+        *)
+            echo "User cancelled installation"
+            exit 1
+            ;;
+    esac
+fi
+
 exit 0

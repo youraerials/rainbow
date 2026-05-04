@@ -143,6 +143,35 @@ Everything lives in `config/rainbow.yaml`. Edit it, then `make config && make st
 
 Restic-encrypted, deduplicated, to any S3-compatible storage (S3, B2, Cloudflare R2, etc.). All data is encrypted client-side before upload — the cloud provider can't read it. Default retention: 7 daily, 4 weekly, 6 monthly.
 
+## Resetting for a fresh install (testing)
+
+When you're iterating on the installer and need to verify it from a truly clean state — the kind of clean a brand-new Mac would be in — run:
+
+```bash
+bash scripts/reset-local.sh
+```
+
+That puts the machine back into "never had Rainbow on it" state. After it finishes you can install `Rainbow.pkg` again and the installer will take you through the wizard from scratch.
+
+The script does ten things, in order. Most of them are obvious; the non-obvious ones are footnoted because we've burned hours on them.
+
+1. **Capture the subdomain API secret** from Keychain, the running install, or `~/Downloads/Rainbow.pkg`. Needed for step 2 — must be done before we wipe anything.
+2. **Release the subdomain claim** on the rainbow.rocks Worker so the next install can re-claim it. Without this, the Worker returns `409 already claimed` and the wizard fails at the claim step. ¹
+3. **Kill any stuck Rainbow processes** (orchestrator, setup hooks, wizard).
+4. **Bootout `rocks.rainbow.{control,setup}` LaunchAgents** and delete their plists.
+5. **Cold-restart Apple Container** — `system stop`, bootout the apiserver AND the three vmnet plugins (`default`, `backend`, `frontend`), then `system start`. ²
+6. **Delete every container.**
+7. **Delete every cached image** (Rainbow's and any pulled upstreams).
+8. **Delete every `rainbow-*` named volume.** ³
+9. **Remove `/Applications/Rainbow/`, `~/Library/Application Support/Rainbow/`, `~/.cloudflared/`, and `/tmp/rainbow-install.log`.**
+10. **Clear every `rainbow-*` Keychain entry.**
+
+¹ The Worker's `/release` is best-effort: if Cloudflare's tunnel-delete API fails (e.g. the cloudflared connector is still running), it logs a `partialFailures` entry but always wipes the KV record so the subdomain stays reclaimable. The next `/provision` finds the orphan tunnel by name and deletes it before creating a new one — so a partial release isn't a permanent stuck state.
+
+² Stale vmnet plugin processes are the most consistent source of "Apple Container is broken" symptoms (host can't reach container IPs, containers can't reach the internet, `--publish` doesn't forward). A clean stop+bootout-plugins+start gets the host-side bridge interface (`bridge100`, etc.) reconfigured.
+
+³ Apple Container's named volumes live at `~/Library/Application Support/com.apple.container/volumes/rainbow-*/`, which is **outside** `~/Library/Application Support/Rainbow/`. Without explicitly deleting them, postgres and mariadb come up reusing the data dir from the previous install — but with a new password from the wizard's mint-secrets, which doesn't match the existing user, which causes every Authentik / Immich / Seafile auth to fail.
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE) for details. Rainbow orchestrates several open-source projects (Immich, Stalwart, CryptPad, Jellyfin, Seafile, Authentik, Caddy, PostgreSQL, MariaDB, Valkey, Restic) which retain their own licenses. Rainbow does not bundle these — they run as separate container processes. See [NOTICE](NOTICE) for full attribution.

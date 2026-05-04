@@ -34,8 +34,32 @@
 set -uo pipefail
 
 WORKER_URL="${RAINBOW_SUBDOMAIN_WORKER_URL:-https://rainbow-subdomain-manager.misteranderson.workers.dev}"
-SUBDOMAIN_NAME="${RAINBOW_SUBDOMAIN_NAME:-aubrey}"
 CONTAINER_BIN="/usr/local/bin/container"
+
+# Resolve the subdomain to release. Order:
+#   1. RAINBOW_SUBDOMAIN_NAME env override (used by the .pkg's
+#      preinstall hook when it knows the prior prefix)
+#   2. /Applications/Rainbow/config/rainbow.yaml's domain.prefix
+#      (only readable if /Applications/Rainbow/bin/yq is around)
+#   3. setup-state.json — survives reinstalls because it lives outside
+#      /Applications/Rainbow
+#   4. Hard fallback: "aubrey" (the dev's prefix; harmless if not theirs)
+SUBDOMAIN_NAME="${RAINBOW_SUBDOMAIN_NAME:-}"
+if [ -z "$SUBDOMAIN_NAME" ] && [ -x /Applications/Rainbow/bin/yq ] \
+                            && [ -f /Applications/Rainbow/config/rainbow.yaml ]; then
+    SUBDOMAIN_NAME=$(/Applications/Rainbow/bin/yq eval '.domain.prefix // ""' \
+        /Applications/Rainbow/config/rainbow.yaml 2>/dev/null)
+    [ "$SUBDOMAIN_NAME" = "null" ] && SUBDOMAIN_NAME=""
+fi
+if [ -z "$SUBDOMAIN_NAME" ] \
+        && [ -f "$HOME/Library/Application Support/Rainbow/setup/setup-state.json" ]; then
+    SUBDOMAIN_NAME=$(grep -oE '"prefix"[[:space:]]*:[[:space:]]*"[^"]*"' \
+        "$HOME/Library/Application Support/Rainbow/setup/setup-state.json" \
+        | head -1 | sed -E 's/.*"([^"]*)"$/\1/')
+fi
+SUBDOMAIN_NAME="${SUBDOMAIN_NAME:-aubrey}"
+echo "Subdomain to release: $SUBDOMAIN_NAME"
+echo ""
 
 # ─── 1. Capture API secret ──────────────────────────────────────
 echo "=== 1. Capture API secret before wiping ==="
