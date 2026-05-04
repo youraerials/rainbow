@@ -122,12 +122,13 @@ main() {
     seafile_data=$(expand_path "$(cfg '.services.seafile.data_path')")
 
     # ── Secrets from Keychain ────────────────────────────────────
-    local pg_password mariadb_root_pass authentik_secret authentik_bootstrap_pass
+    local pg_password mariadb_root_pass authentik_secret authentik_bootstrap_pass authentik_api_token
     local seafile_admin_pass cf_tunnel_token
     pg_password=$(keychain_get "postgres-password")
     mariadb_root_pass=$(keychain_get "mariadb-root-password")
     authentik_secret=$(keychain_get "authentik-secret")
     authentik_bootstrap_pass=$(keychain_get "authentik-bootstrap-password")
+    authentik_api_token=$(keychain_get "authentik-api-token")
     seafile_admin_pass=$(keychain_get "seafile-admin-password")
     cf_tunnel_token=$(keychain_get "cloudflare-tunnel-token")
 
@@ -213,6 +214,7 @@ EOF
             "$INFRA_DIR/authentik/.env" \
             "AUTHENTIK_SECRET_KEY" "$authentik_secret" \
             "AUTHENTIK_BOOTSTRAP_PASSWORD" "$authentik_bootstrap_pass" \
+            "AUTHENTIK_BOOTSTRAP_TOKEN" "$authentik_api_token" \
             "ADMIN_EMAIL" "$admin_email" \
             "POSTGRES_USER" "$pg_user" \
             "POSTGRES_PASSWORD" "$pg_password" \

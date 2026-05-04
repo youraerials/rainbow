@@ -135,6 +135,18 @@ export async function* provision(
         ["rainbow-authentik-secret", randomHex(50)],
         ["rainbow-authentik-bootstrap-password", randomHex(20)],
         ["rainbow-seafile-admin-password", randomHex(20)],
+        // Per-service admin / API secrets used by post-start hooks.
+        // immich/setup.sh, jellyfin/setup.sh, cryptpad's templated
+        // config, and authentik's own setup-providers.sh all expect
+        // these in Keychain. The Authentik token doubles as
+        // AUTHENTIK_BOOTSTRAP_TOKEN — Authentik provisions an API
+        // token with this exact value on first boot, so
+        // setup-providers.sh can authenticate without the user
+        // having to mint one in the Authentik UI.
+        ["rainbow-immich-admin-password", randomHex(24)],
+        ["rainbow-jellyfin-admin-password", randomHex(24)],
+        ["rainbow-cryptpad-admin-key", randomHex(24)],
+        ["rainbow-authentik-api-token", randomHex(32)],
     ] as const;
     try {
         for (const [name, value] of minted) {
