@@ -3,6 +3,12 @@
 *.env.local
 .env.*
 !.env.example
+# Don't accidentally ignore Jinja2 templates — `.env.*` above
+# matches `.env.j2` (config/templates/<service>/.env.j2). Without
+# this exception, those templates aren't tracked, the .pkg payload
+# ships without them, and `make setup` fails with "No such file or
+# directory" on `.env.j2`. Burned an evening on this 2026-05-03.
+!.env.j2
 
 # macOS
 .DS_Store
