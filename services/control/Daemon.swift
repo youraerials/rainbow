@@ -37,6 +37,7 @@ let allowedRunTasks: [String: (script: String, arg: String?)] = [
     "generate-config":  ("scripts/generate-config.sh", nil),
     "start-minimum":    ("services/orchestrator.sh", "minimum"),
     "setup-providers":  ("services/authentik/setup-providers.sh", nil),
+    "upgrade":          ("installer/scripts/upgrade.sh", nil),
 ]
 
 func log(_ message: String) {
@@ -444,6 +445,21 @@ func route(_ req: HTTPRequest, _ res: ResponseWriter) {
         return
     }
 
+    // GET /system/info — installed Rainbow + Apple Container versions
+    if req.method == "GET" && req.path == "/system/info" {
+        handleSystemInfo(res: res)
+        return
+    }
+
+    // POST /system/reload-daemon — restart self via launchctl kickstart.
+    // Used after the upgrade.sh task wrote a new daemon binary and
+    // touched .daemon-reload-pending; the dashboard offers the user
+    // a button that hits this endpoint.
+    if req.method == "POST" && req.path == "/system/reload-daemon" {
+        handleReloadDaemon(res: res)
+        return
+    }
+
     // PUT /keychain/<service>
     if let m = req.path.matchPath(#"^/keychain/([^/?]+)$"#),
        req.method == "PUT" {
@@ -547,6 +563,71 @@ func handleRun(task: String, res: ResponseWriter) {
     res.startSSE()
     res.sse(event: "started", data: "{\"task\":\"\(task)\"}")
     streamProcessAsSSE(executable: "/bin/bash", arguments: args, taskName: task, res: res)
+}
+
+func handleSystemInfo(res: ResponseWriter) {
+    // Rainbow installed version (written by Phase A postinstall and by
+    // every successful upgrade.sh run).
+    let rainbowVersionFile = "\(rainbowRoot)/.installed-version"
+    let rainbowInstalled = (try? String(contentsOfFile: rainbowVersionFile, encoding: .utf8))?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+    // Apple Container installed version. `container --version` prints
+    // a single line like "container CLI version 0.11.0 (build: release, ...)".
+    var containerInstalled = ""
+    let cver = runSync("container", ["--version"])
+    if cver.exitCode == 0 {
+        let firstLine = cver.stdout.split(separator: "\n").first.map(String.init) ?? ""
+        let parts = firstLine.split(separator: " ").map(String.init)
+        if let i = parts.firstIndex(of: "version"), i + 1 < parts.count {
+            containerInstalled = parts[i + 1]
+        }
+    }
+
+    // Apple Container pinned version (from binaries.lock.sh that ships in
+    // /Applications/Rainbow/installer/scripts).
+    var containerPinned = ""
+    let lockFile = "\(rainbowRoot)/installer/scripts/binaries.lock.sh"
+    if let lock = try? String(contentsOfFile: lockFile, encoding: .utf8),
+       let regex = try? NSRegularExpression(pattern: #"CONTAINER_VERSION="([^"]+)""#),
+       let match = regex.firstMatch(in: lock,
+                                    range: NSRange(lock.startIndex..., in: lock)),
+       let range = Range(match.range(at: 1), in: lock) {
+        containerPinned = String(lock[range])
+    }
+
+    let reloadPending = FileManager.default.fileExists(
+        atPath: "\(rainbowRoot)/.daemon-reload-pending"
+    )
+
+    let body: [String: Any] = [
+        "rainbow": ["installedVersion": rainbowInstalled],
+        "container": [
+            "installedVersion": containerInstalled,
+            "pinnedVersion": containerPinned,
+        ],
+        "daemonReloadPending": reloadPending,
+    ]
+    res.writeJSON(200, body)
+}
+
+func handleReloadDaemon(res: ResponseWriter) {
+    // Respond before we kill ourselves so the dashboard sees the 200.
+    // The kickstart fires from a detached background queue ~0.5s later.
+    let uidResult = runSync("/usr/bin/id", ["-u"])
+    let uid = uidResult.exitCode == 0
+        ? uidResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        : "501"
+    let label = "gui/\(uid)/rocks.rainbow.control"
+
+    res.writeJSON(200, ["scheduled": true, "label": label])
+
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
+        // Best-effort: clear the marker file so dashboard stops nagging
+        // even if kickstart somehow fails.
+        try? FileManager.default.removeItem(atPath: "\(rainbowRoot)/.daemon-reload-pending")
+        _ = runSync("/bin/launchctl", ["kickstart", "-k", label])
+    }
 }
 
 func handleWizardStatus(res: ResponseWriter) {

@@ -169,6 +169,17 @@ log "Opening setup progress page…"
 sudo -u "$PRIMARY_USER" /usr/bin/open "http://localhost:9001/setup-progress" \
     >/dev/null 2>&1 || true
 
+# The .pkg payload already carries /Applications/Rainbow/.installed-version
+# (build-pkg.sh writes it from the release tag). Just make sure ownership
+# matches the primary user — chown -R further up handled the install
+# tree but the version file is small + cheap to repeat.
+VERSION_FILE="$INSTALL_DIR/.installed-version"
+if [ -f "$VERSION_FILE" ]; then
+    chown "$PRIMARY_USER" "$VERSION_FILE"
+    chmod 644 "$VERSION_FILE"
+    log "Installed version: $(cat "$VERSION_FILE")"
+fi
+
 log "Postinstall (Phase A) complete. Phase B running via LaunchAgent."
 
 exit 0

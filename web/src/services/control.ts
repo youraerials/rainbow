@@ -70,3 +70,37 @@ export async function logs(
 ): Promise<{ status: number; body: unknown }> {
     return call("GET", `/logs/${encodeURIComponent(name)}?lines=${lines}`);
 }
+
+/** GET /system/info — versions of Rainbow + Apple Container. */
+export async function systemInfo(): Promise<{ status: number; body: unknown }> {
+    return call("GET", "/system/info");
+}
+
+/** POST /system/reload-daemon — kickstart the daemon LaunchAgent. */
+export async function reloadDaemon(): Promise<{ status: number; body: unknown }> {
+    return call("POST", "/system/reload-daemon");
+}
+
+/**
+ * Open an SSE stream from POST /run/<task> on the daemon and return the
+ * raw upstream Response. Caller pipes Response.body into their own
+ * Express res so the dashboard's EventSource can read events as the
+ * task produces them.
+ */
+export async function streamRun(task: string): Promise<Response> {
+    if (!isConfigured()) {
+        // Fabricate a 503 so the caller can react uniformly.
+        return new Response(
+            JSON.stringify({ error: "control daemon not configured" }),
+            { status: 503, headers: { "Content-Type": "application/json" } },
+        );
+    }
+    const url = `${CONTROL_URL}/run/${encodeURIComponent(task)}`;
+    return fetch(url, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${CONTROL_TOKEN}`,
+            Accept: "text/event-stream",
+        },
+    });
+}

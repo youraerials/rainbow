@@ -12,6 +12,7 @@ import { appsRouter } from "./apps.js";
 import { servicesControlRouter } from "./services-control.js";
 import { inboundMailRouter } from "./inbound-mail.js";
 import { smarthostRouter } from "./smarthost.js";
+import { updatesRouter } from "./updates.js";
 
 export const apiRouter = Router();
 
@@ -54,3 +55,6 @@ apiRouter.use("/admin/smarthost", smarthostRouter);
 
 // /api/apps/* — list, get, delete apps + per-app key/value data
 apiRouter.use("/apps", appsRouter);
+
+// /api/updates/* — Rainbow self-update + Apple Container version delta
+apiRouter.use("/updates", updatesRouter);

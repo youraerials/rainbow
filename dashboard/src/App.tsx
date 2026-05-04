@@ -5,6 +5,7 @@ import { AppBuilderView } from "./views/AppBuilderView";
 import { BackupsView } from "./views/BackupsView";
 import { SettingsView } from "./views/SettingsView";
 import { DomainsView } from "./views/DomainsView";
+import { UpdateBanner } from "./components/UpdateBanner";
 
 const navItems = [
   { path: "/", label: "Home" },
@@ -78,6 +79,7 @@ export function App() {
         </nav>
 
         <main style={styles.main}>
+          <UpdateBanner />
           <Routes>
             <Route path="/" element={<HomeView />} />
             <Route path="/services" element={<ServicesView />} />

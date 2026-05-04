@@ -281,6 +281,20 @@ jobs:
         run: |
           mkdir -p release-assets
           cp "installer/build/Rainbow-${VERSION}.pkg" release-assets/Rainbow.pkg
+
+          # Source tarball: same payload tree the .pkg installs, used
+          # by the dashboard's in-app updater (installer/scripts/upgrade.sh
+          # downloads + extracts it). Excludes the burned-in subdomain
+          # API secret — at upgrade time the user already has it in
+          # Keychain; we don't want a copy of the operator secret on
+          # the release CDN.
+          PAYLOAD_ROOT="installer/build/payload"
+          TREE_TARBALL="release-assets/rainbow-tree-${VERSION}.tar.gz"
+          tar -czf "$TREE_TARBALL" \
+              --exclude="Applications/Rainbow/installer/.subdomain-api-secret" \
+              -C "$PAYLOAD_ROOT" \
+              "Applications/Rainbow"
+
           cd release-assets
           shasum -a 256 Rainbow.pkg > Rainbow.pkg.sha256
           # Capture for the release body
@@ -298,6 +312,7 @@ jobs:
           files: |
             release-assets/Rainbow.pkg
             release-assets/Rainbow.pkg.sha256
+            release-assets/rainbow-tree-${{ env.VERSION }}.tar.gz
           body: |
             ## Rainbow ${{ env.VERSION }} for macOS
 
