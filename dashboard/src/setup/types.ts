@@ -25,7 +25,10 @@ export interface SetupState {
     name: string;
     credentialsWrittenTo: string;
   };
-  admin?: { email: string; name: string };
+  // password is held only until provision.ts mints it into Keychain
+  // as `rainbow-admin-password`; provision then patches it back out
+  // of state so it doesn't sit in setup-state.json after the wizard.
+  admin?: { email: string; name: string; password?: string };
   services?: Record<string, boolean>;
   storage?: Record<string, string>;
   completedAt?: string;

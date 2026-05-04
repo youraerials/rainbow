@@ -59,6 +59,7 @@ const PHASES = {
     "start-stack":   "Starting your Rainbow services",
     "wait-authentik":"Waiting for the identity service to come online",
     "setup-providers":"Wiring up single sign-on",
+    "restart-web":   "Activating the dashboard",
     "bootstrap-admin":"Creating your administrator account",
 };
 
@@ -111,25 +112,43 @@ export async function* provision(
         return;
     }
 
-    await patchState({
-        domain: {
-            mode: "claim",
-            prefix: input.name,
-            zone: zoneFromApex(claim.domain),
-            apex: claim.domain,
-        },
-        tunnel: {
-            id: claim.tunnel.id,
-            name: claim.tunnel.name,
-            credentialsWrittenTo: credsPath,
-        },
-        admin: { email: input.ownerEmail, name: (await readState()).admin?.name ?? "" },
-    });
+    {
+        const cur = await readState();
+        await patchState({
+            domain: {
+                mode: "claim",
+                prefix: input.name,
+                zone: zoneFromApex(claim.domain),
+                apex: claim.domain,
+            },
+            tunnel: {
+                id: claim.tunnel.id,
+                name: claim.tunnel.name,
+                credentialsWrittenTo: credsPath,
+            },
+            // Preserve password so mint-secrets can stash it in Keychain
+            // (patchState is a shallow merge — without this, the password
+            // the user typed in AdminStep gets wiped here).
+            admin: {
+                email: input.ownerEmail,
+                name: cur.admin?.name ?? "",
+                password: cur.admin?.password,
+            },
+        });
+    }
     yield phaseDone("claim");
 
     // ─── Phase 2: mint-secrets ────────────────────────────────
     yield phaseStart("mint-secrets");
-    const minted = [
+    const adminPassword = (await readState()).admin?.password ?? "";
+    if (!adminPassword) {
+        yield phaseError(
+            "mint-secrets",
+            new Error("Admin password missing from state — go back to the Admin step and set one."),
+        );
+        return;
+    }
+    const minted: Array<readonly [string, string]> = [
         ["rainbow-postgres-password", randomHex(24)],
         ["rainbow-mariadb-root-password", randomHex(24)],
         ["rainbow-authentik-secret", randomHex(50)],
@@ -147,15 +166,31 @@ export async function* provision(
         ["rainbow-jellyfin-admin-password", randomHex(24)],
         ["rainbow-cryptpad-admin-key", randomHex(24)],
         ["rainbow-authentik-api-token", randomHex(32)],
-    ] as const;
+        // The user-chosen admin password. bootstrap-admin.sh reads
+        // this and creates the actual Authentik user with it.
+        ["rainbow-admin-password", adminPassword],
+    ];
     try {
         for (const [name, value] of minted) {
             await daemonKeychainPut(name, value);
-            yield phaseLog("mint-secrets", `  ${name}`);
+            yield phaseLog(
+                "mint-secrets",
+                `  ${name}${name === "rainbow-admin-password" ? " (from your input)" : ""}`,
+            );
         }
     } catch (err) {
         yield phaseError("mint-secrets", err);
         return;
+    }
+    // Password is safely in Keychain now — clear it from setup-state.json
+    // so it doesn't sit in plaintext on disk after the wizard finishes.
+    {
+        const cur = await readState();
+        if (cur.admin) {
+            await patchState({
+                admin: { email: cur.admin.email, name: cur.admin.name },
+            });
+        }
     }
     yield phaseDone("mint-secrets");
 
@@ -217,14 +252,29 @@ export async function* provision(
     // ─── Phase 7: setup-providers ──────────────────────────────
     yield* relayDaemonRun("setup-providers", "setup-providers");
 
-    // ─── Phase 8: bootstrap-admin ──────────────────────────────
-    // The user's admin account is created via Authentik's API as a
-    // separate identity from the bootstrap-admin we minted in Phase 2.
-    // Once Authentik is reachable + setup-providers has created OIDC
-    // clients, we POST to /api/v3/core/users/ with the wizard's email.
-    yield phaseStart("bootstrap-admin");
-    yield phaseLog("bootstrap-admin", "(Authentik admin bootstrap not yet wired — finish via the dashboard's first sign-in flow)");
-    yield phaseDone("bootstrap-admin");
+    // ─── Phase 8: restart-web ──────────────────────────────────
+    // start-stack tried to bring up rainbow-web before Authentik
+    // existed — it crashed with "OIDC env not fully populated"
+    // because the OAuth client_id/secret weren't in Keychain yet.
+    // setup-providers just put them there, so recreate the
+    // container now and it'll boot with a populated env.
+    yield phaseStart("restart-web");
+    try {
+        await daemonRestart("rainbow-web");
+        yield phaseLog("restart-web", "rainbow-web restarted with OIDC credentials");
+    } catch (err) {
+        yield phaseError("restart-web", err);
+        return;
+    }
+    yield phaseDone("restart-web");
+
+    // ─── Phase 9: bootstrap-admin ──────────────────────────────
+    // Create the user's actual admin account in Authentik using the
+    // bootstrap API token (minted in Phase 2, baked into Authentik's
+    // first boot). The script reads the user's chosen password from
+    // Keychain (rainbow-admin-password), creates a user with their
+    // email + name, sets the password, adds to the Admins group.
+    yield* relayDaemonRun("bootstrap-admin", "bootstrap-admin");
 
     // ─── Done ──────────────────────────────────────────────────
     await patchState({ completedAt: new Date().toISOString() });
@@ -309,6 +359,25 @@ async function daemonKeychainPut(service: string, value: string): Promise<void> 
     }
 }
 
+async function daemonRestart(name: string): Promise<void> {
+    // The daemon's /restart/<name> route delegates to orchestrator.sh's
+    // restart-container, which destroys the existing container and
+    // re-runs `start_<name>` from the orchestrator — re-reading env
+    // from Keychain. Up to 60s for image pull + boot.
+    const r = await fetchWithTimeout(
+        `${CONTROL_URL}/restart/${encodeURIComponent(name)}`,
+        60000,
+        {
+            method: "POST",
+            headers: { Authorization: `Bearer ${CONTROL_TOKEN}` },
+        },
+    );
+    if (!r.ok) {
+        const text = await r.text();
+        throw new Error(`daemon restart ${name} failed: ${r.status} ${text}`);
+    }
+}
+
 /**
  * Stream events out of a daemon /run/<task> SSE endpoint and re-emit
  * them as PhaseEvents. The daemon emits `event: log` with stdout/stderr
@@ -316,7 +385,7 @@ async function daemonKeychainPut(service: string, value: string): Promise<void> 
  */
 async function* relayDaemonRun(
     phase: keyof typeof PHASES,
-    task: "generate-config" | "start-minimum" | "setup-providers",
+    task: "generate-config" | "start-minimum" | "setup-providers" | "bootstrap-admin",
 ): AsyncGenerator<PhaseEvent, void, unknown> {
     yield phaseStart(phase);
     let r: globalThis.Response;

@@ -49,6 +49,10 @@ export interface SetupState {
     admin?: {
         email: string;
         name: string;
+        // Held only between the AdminStep submission and mint-secrets;
+        // provision.ts strips it from state once the password is in
+        // Keychain so it doesn't sit in plaintext on disk.
+        password?: string;
     };
     services?: Record<string, boolean>;
     storage?: Record<string, string>;

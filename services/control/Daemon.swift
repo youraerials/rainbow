@@ -37,6 +37,7 @@ let allowedRunTasks: [String: (script: String, arg: String?)] = [
     "generate-config":  ("scripts/generate-config.sh", nil),
     "start-minimum":    ("services/orchestrator.sh", "minimum"),
     "setup-providers":  ("services/authentik/setup-providers.sh", nil),
+    "bootstrap-admin":  ("services/authentik/bootstrap-admin.sh", nil),
     "upgrade":          ("installer/scripts/upgrade.sh", nil),
 ]
 

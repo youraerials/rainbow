@@ -4,6 +4,8 @@ import { StepProps } from "./types";
 export function AdminStep({ state, patch, onContinue, onBack }: StepProps) {
   const [email, setEmail] = useState(state.admin?.email ?? "");
   const [name, setName] = useState(state.admin?.name ?? "");
+  const [password, setPassword] = useState(state.admin?.password ?? "");
+  const [confirm, setConfirm] = useState(state.admin?.password ?? "");
   const [error, setError] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
@@ -12,8 +14,22 @@ export function AdminStep({ state, patch, onContinue, onBack }: StepProps) {
       setError("That doesn't look like an email.");
       return;
     }
+    if (password.length < 12) {
+      setError("Password must be at least 12 characters.");
+      return;
+    }
+    if (password !== confirm) {
+      setError("Passwords don't match.");
+      return;
+    }
     setError(null);
-    await patch({ admin: { email: email.trim(), name: name.trim() } });
+    await patch({
+      admin: {
+        email: email.trim(),
+        name: name.trim(),
+        password,
+      },
+    });
     void onContinue();
   }
 
@@ -61,8 +77,41 @@ export function AdminStep({ state, patch, onContinue, onBack }: StepProps) {
           />
           <div className="setup-help">
             Used as your login and as the contact address for important
-            notifications. You'll set your password during the first sign-in.
+            notifications.
           </div>
+        </div>
+        <div className="setup-field">
+          <label className="setup-label" htmlFor="setup-password">Password</label>
+          <input
+            id="setup-password"
+            className="setup-input"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            autoComplete="new-password"
+            minLength={12}
+            required
+          />
+          <div className="setup-help">At least 12 characters.</div>
+        </div>
+        <div className="setup-field">
+          <label className="setup-label" htmlFor="setup-confirm">Confirm password</label>
+          <input
+            id="setup-confirm"
+            className="setup-input"
+            type="password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            autoComplete="new-password"
+            minLength={12}
+            required
+          />
         </div>
         {error && <div className="setup-error">{error}</div>}
 
