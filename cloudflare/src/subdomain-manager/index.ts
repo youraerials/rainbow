@@ -154,7 +154,21 @@ app.post("/provision", async (c) => {
   };
 
   // 1. Tunnel
-  const tunnel = await cf.createTunnel(`rainbow-${name}`);
+  // Defensive cleanup: if a tunnel with this exact name already exists
+  // on the operator account, it's an orphan from a previous install
+  // whose /release didn't finish (or was never called). Delete it so
+  // createTunnel doesn't fail with 1013 "You already have a tunnel
+  // with this name". Safe to do here unconditionally — KV said the
+  // subdomain is unclaimed, so any existing tunnel by this name has
+  // no live tenant.
+  const tunnelName = `rainbow-${name}`;
+  const orphan = await cf.findTunnelByName(tunnelName);
+  if (orphan) {
+    console.warn(`[provision] cleaning up orphan tunnel ${tunnelName} (id=${orphan.id})`);
+    await cf.deleteTunnel(orphan.id);
+  }
+
+  const tunnel = await cf.createTunnel(tunnelName);
   if (!tunnel.success || !tunnel.info || !tunnel.credentials) {
     return c.json(
       { error: `tunnel creation failed: ${tunnel.error ?? "unknown"}` },
@@ -252,13 +266,31 @@ app.delete("/release/:name", async (c) => {
     c.env.CLOUDFLARE_ACCOUNT_ID,
   );
 
+  // Best-effort cleanup: log but don't abort if any individual call
+  // fails. The worst outcome of a partial cleanup is a stranded DNS
+  // record or tunnel — fixable by reissuing /release or via the
+  // dashboard. The worst outcome of FAILING the whole release because
+  // of one bad call is a phantom KV claim that nothing can clear,
+  // which permanently bricks the subdomain.
+  const partialFailures: string[] = [];
   for (const id of [...tenant.dnsRecordIds, ...tenant.mxRecordIds]) {
-    await cf.deleteDnsRecord(id);
+    const r = await cf.deleteDnsRecord(id);
+    if (!r.success) partialFailures.push(`dns ${id}`);
   }
-  await cf.deleteTunnel(tenant.tunnelId);
+  const tunnelRes = await cf.deleteTunnel(tenant.tunnelId);
+  if (!tunnelRes.success) partialFailures.push(`tunnel ${tenant.tunnelId}`);
+
+  // Always wipe the KV record so the subdomain is reclaimable.
   await c.env.SUBDOMAINS.delete(name);
 
-  return c.json({ success: true, released: name });
+  if (partialFailures.length > 0) {
+    console.warn(`[release] ${name} had partial failures:`, partialFailures);
+  }
+  return c.json({
+    success: true,
+    released: name,
+    ...(partialFailures.length > 0 ? { partialFailures } : {}),
+  });
 });
 
 // ─── Helpers ──────────────────────────────────────────────────

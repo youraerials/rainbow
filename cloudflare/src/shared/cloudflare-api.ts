@@ -218,6 +218,23 @@ export class CloudflareApi {
     return { success: resp.success };
   }
 
+  /**
+   * List non-deleted tunnels and return the first one whose name matches
+   * exactly. Used by /provision to detect orphans (a tunnel left over
+   * from a prior install whose KV record is gone) before trying to
+   * create a new one with the same name — Cloudflare returns 1013
+   * "You already have a tunnel with this name" otherwise.
+   */
+  async findTunnelByName(name: string): Promise<TunnelInfo | null> {
+    const resp = await this.request<TunnelInfo[]>(
+      `/accounts/${this.accountId}/cfd_tunnel?name=${encodeURIComponent(name)}&is_deleted=false`,
+      { method: "GET" },
+    );
+    if (!resp.success || !resp.result) return null;
+    // CF's `name` query is a substring match — re-filter for exact equality.
+    return resp.result.find((t) => t.name === name) ?? null;
+  }
+
   // ─── Email Routing ────────────────────────────────────────────
 
   /**
