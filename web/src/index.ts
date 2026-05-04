@@ -110,25 +110,93 @@ if (SETUP_MODE) {
 
     app.use("/api", apiRouter);
     attachMcp(app, "/mcp", requireAuth);
+
+    // Dashboard moves from / to /dashboard (so / is free for the user's
+    // home app). Vite is built with `base: "/dashboard/"` so asset URLs
+    // resolve correctly under this prefix; React Router uses the
+    // matching basename.
+    app.use(
+        "/dashboard",
+        (req, res, next) => {
+            const cookies = (req as typeof req & { cookies?: Record<string, string> }).cookies;
+            if (cookies?.rainbow_session) return next();
+            res.redirect("/api/auth/login");
+        },
+        express.static(DASHBOARD_DIR, { index: "index.html" }),
+        (req, res, next) => {
+            if (req.method !== "GET") return next();
+            res.sendFile(path.join(DASHBOARD_DIR, "index.html"));
+        },
+    );
+
     app.use("/apps", requireAuth, express.static(APPS_DIR, { index: "index.html" }));
 
-    app.use((req, res, next) => {
-        if (req.path.startsWith("/api/") || req.path.startsWith("/mcp")) return next();
-        const cookies = (req as typeof req & { cookies?: Record<string, string> }).cookies;
-        if (cookies?.rainbow_session) return next();
-        res.redirect("/api/auth/login");
+    // Root: serve the user's home app (whichever is flagged is_home in
+    // the apps table) at /. If no app is flagged, serve a small
+    // placeholder pointing the visitor at the dashboard.
+    const { getHomeAppSlug } = await import("./db/apps.js");
+    const path_ = path;
+    app.get("/", async (_req, res, next) => {
+        const slug = await getHomeAppSlug().catch(() => null);
+        if (!slug) return next(); // falls through to placeholder below
+        const indexPath = path_.join(APPS_DIR, slug, "index.html");
+        res.sendFile(indexPath, (err) => {
+            if (err) next();
+        });
+    });
+    app.use(async (req, res, next) => {
+        if (req.method !== "GET") return next();
+        if (req.path.startsWith("/api/") || req.path.startsWith("/mcp") ||
+            req.path.startsWith("/dashboard") || req.path.startsWith("/apps")) {
+            return next();
+        }
+        const slug = await getHomeAppSlug().catch(() => null);
+        if (slug) {
+            // Resolve `/foo.css` (etc.) against the home app's directory
+            // — like express.static would, but only if a home is set.
+            const target = path_.join(APPS_DIR, slug, req.path);
+            const root = path_.join(APPS_DIR, slug);
+            if (!target.startsWith(root + path_.sep) && target !== root) {
+                return next();
+            }
+            res.sendFile(target, (err) => {
+                if (err) next();
+            });
+            return;
+        }
+        next();
     });
 
-    app.use(express.static(DASHBOARD_DIR, { index: "index.html" }));
-    app.use((req, res, next) => {
-        if (req.method !== "GET") return next();
-        if (req.path.startsWith("/api/") || req.path.startsWith("/mcp")) return next();
-        res.sendFile(path.join(DASHBOARD_DIR, "index.html"));
+    // Final fallback: visitor hits / (or anything not claimed above)
+    // and no home app is set. Show a simple welcome page that points
+    // at /dashboard. This is a string literal — no static file to ship.
+    app.get("*", (_req, res) => {
+        res.status(200).type("html").send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Rainbow</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+           max-width: 32rem; margin: 8rem auto; padding: 0 1.5rem;
+           line-height: 1.5; color: #1a1612; }
+    h1 { font-weight: 400; font-size: 2rem; letter-spacing: -0.02em; margin: 0 0 .5rem; }
+    p { color: #514738; margin: 0 0 1rem; }
+    a { color: #1a1612; }
+  </style>
+</head>
+<body>
+  <h1>Welcome to your Rainbow.</h1>
+  <p>This is your domain. Set a home page in the <a href="/dashboard">dashboard's app builder</a>, or sign in to get started.</p>
+  <p><a href="/dashboard">→ Sign in to your dashboard</a></p>
+</body>
+</html>`);
     });
 
     app.listen(PORT, () => {
         console.log(`[rainbow-web] listening on :${PORT}`);
-        console.log(`[rainbow-web]   dashboard: ${DASHBOARD_DIR}`);
+        console.log(`[rainbow-web]   dashboard: ${DASHBOARD_DIR} → /dashboard`);
         console.log(`[rainbow-web]   apps:      ${APPS_DIR}`);
+        console.log(`[rainbow-web]   home:      whichever app has is_home=true (or built-in placeholder)`);
     });
 }

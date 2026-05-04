@@ -7,13 +7,45 @@
  * tool-use guidance) propagate to every generation.
  */
 
+import type { ToolInfo } from "../mcp/server.js";
+
 export interface PromptContext {
     /** The slug the generated app will be served at: /apps/<slug>/ */
     slug: string;
-    /** List of MCP tool names available at the gateway (filtered to user-callable). */
-    availableTools: string[];
+    /** Full metadata for every MCP tool the gateway exposes. */
+    availableTools: ToolInfo[];
     /** Full URL of the Rainbow web tier (e.g. https://test.rainbow.rocks). */
     webHost: string;
+}
+
+/**
+ * Render a tool's JSON Schema as a compact, scannable parameter list
+ * for the prompt. Claude reads this and knows: which params exist,
+ * which are required, what types, and what they mean.
+ *
+ * Input is the JSON Schema produced by zod-to-json-schema (object
+ * with `type: "object"`, `properties: {...}`, optional `required: [...]`).
+ */
+function formatToolSchema(schema: Record<string, unknown>): string {
+    const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
+    const required = new Set((schema.required ?? []) as string[]);
+    const propNames = Object.keys(properties);
+    if (propNames.length === 0) return "  (no arguments)";
+
+    return propNames
+        .map((name) => {
+            const prop = properties[name];
+            const type = prop.type ?? "any";
+            const desc = prop.description ?? "";
+            const optional = required.has(name) ? "" : "?";
+            const enumValues = Array.isArray(prop.enum) ? ` enum: ${JSON.stringify(prop.enum)}` : "";
+            return `    ${name}${optional}: ${type}${enumValues}${desc ? ` — ${desc}` : ""}`;
+        })
+        .join("\n");
+}
+
+function formatToolBlock(tool: ToolInfo): string {
+    return `- \`${tool.name}\` — ${tool.description || "(no description)"}\n${formatToolSchema(tool.inputSchema)}`;
 }
 
 export const APP_GENERATION_MODEL = "claude-sonnet-4-5";
@@ -58,7 +90,6 @@ The user is already authenticated (their cookie is set). Use \`fetch()\` with
 Available endpoints:
 
 **1. MCP gateway at /mcp** — call tools to read/manipulate user data.
-   Available tool names: ${ctx.availableTools.join(", ")}
 
    Example (call a tool):
      const r = await fetch('/mcp', {
@@ -71,6 +102,10 @@ Available endpoints:
        })
      });
      // Response is server-sent-events; parse the line starting with "data: ".
+
+   Tools available on this Rainbow:
+
+${ctx.availableTools.map(formatToolBlock).join("\n\n")}
 
 **2. Per-app key/value persistence at /api/apps/${ctx.slug}/data**
 

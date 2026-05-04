@@ -63,7 +63,13 @@ http://{{HOST_PREFIX}}docs.{{ZONE}} {
 }
 
 http://{{HOST_PREFIX}}docs-sandbox.{{ZONE}} {
-	reverse_proxy cryptpad:3001
+	# Both main and sandbox hit cryptpad's single HTTP server on
+	# :3000 — it distinguishes by Host header (matching httpSafeOrigin
+	# in cryptpad's config.js). httpSafePort=3001 in our config is
+	# documented for the legacy "same host, different port" setup,
+	# but the cryptpad/cryptpad image only ever binds :3000 (HTTP)
+	# + :3003 (WebSocket). Pointing here at :3001 would 502.
+	reverse_proxy cryptpad:3000
 }
 
 # ─── Media (Jellyfin) ────────────────────────────────────────────

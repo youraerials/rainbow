@@ -12,6 +12,7 @@ export interface AppMetadata {
     generatedAt: string;
     generatedBy: string | null;
     model: string | null;
+    isHome: boolean;
 }
 
 interface AppRow {
@@ -22,6 +23,7 @@ interface AppRow {
     generated_at: Date;
     generated_by: string | null;
     model: string | null;
+    is_home: boolean;
 }
 
 function fromRow(r: AppRow): AppMetadata {
@@ -33,6 +35,7 @@ function fromRow(r: AppRow): AppMetadata {
         generatedAt: r.generated_at.toISOString(),
         generatedBy: r.generated_by,
         model: r.model,
+        isHome: r.is_home,
     };
 }
 
@@ -88,6 +91,52 @@ export async function deleteApp(slug: string): Promise<boolean> {
     if (!pool) return false;
     const result = await pool.query("DELETE FROM apps WHERE slug = $1", [slug]);
     return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Mark `slug` as the user's home app. Atomically clears any prior home
+ * (the partial unique index `apps_one_home_idx` would otherwise reject
+ * the second SET). Returns true if the app exists and is now home.
+ */
+export async function setHomeApp(slug: string): Promise<boolean> {
+    const pool = getPool();
+    if (!pool) return false;
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        await client.query("UPDATE apps SET is_home = false WHERE is_home = true");
+        const result = await client.query(
+            "UPDATE apps SET is_home = true WHERE slug = $1",
+            [slug],
+        );
+        await client.query("COMMIT");
+        return (result.rowCount ?? 0) > 0;
+    } catch (err) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/** Clear the home flag on `slug`. */
+export async function unsetHomeApp(slug: string): Promise<void> {
+    const pool = getPool();
+    if (!pool) return;
+    await pool.query(
+        "UPDATE apps SET is_home = false WHERE slug = $1",
+        [slug],
+    );
+}
+
+/** Returns the slug of the app currently flagged as home, or null. */
+export async function getHomeAppSlug(): Promise<string | null> {
+    const pool = getPool();
+    if (!pool) return null;
+    const result = await pool.query<{ slug: string }>(
+        "SELECT slug FROM apps WHERE is_home = true LIMIT 1",
+    );
+    return result.rows[0]?.slug ?? null;
 }
 
 // ─── Per-app key/value persistence ───────────────────────────────

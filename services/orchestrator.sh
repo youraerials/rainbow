@@ -398,6 +398,23 @@ start_cryptpad() {
     ensure_volume rainbow-cryptpad-block
     ensure_volume rainbow-cryptpad-data
     ensure_volume rainbow-cryptpad-datastore
+    ensure_volume rainbow-cryptpad-config
+
+    # Initialize the config volume with the image's example files
+    # (config.example.js + sso.example.js — the image entrypoint
+    # `cp`s from these) plus our rendered config.js. Done as an init
+    # container instead of a single-file bind mount because Apple
+    # Container 0.11's file bind mounts return EPERM mid-run; a
+    # named volume populated up-front is reliable.
+    container delete --force rainbow-cryptpad-init >/dev/null 2>&1 || true
+    container run --rm --name rainbow-cryptpad-init \
+        --entrypoint /bin/sh \
+        --mount "type=volume,source=rainbow-cryptpad-config,target=/dst" \
+        --volume "$INFRA_DIR/cryptpad/customize:/src:ro" \
+        docker.io/cryptpad/cryptpad:latest \
+        -c 'cp /cryptpad/config/* /dst/ 2>/dev/null; cp /src/config.js /dst/config.js && chmod 644 /dst/config.js' \
+        >/dev/null
+
     # CryptPad's entrypoint requires CPAD_CONF env to point at a config file;
     # without it the entrypoint silently corrupts (cp into empty path) and the
     # container exits before npm even starts. CPAD_MAIN_DOMAIN / SANDBOX_DOMAIN
@@ -408,12 +425,19 @@ start_cryptpad() {
     zone=$(yq eval '.domain.zone' "$CONFIG_FILE")
     [ "$prefix" = "null" ] && prefix=""
     [ -n "$prefix" ] && host_prefix="${prefix}-" || host_prefix=""
+    # CPAD_CONF tells the image's docker-entrypoint where the config
+    # file lives. Without it (empty string), the entrypoint's
+    # `if [ ! -f "$CPAD_CONF" ]` evaluates true, it runs
+    # `cp config.example.js ""` which fails with "can't create ''",
+    # and the container exits. With it set to a path that already
+    # exists in our pre-populated volume, the entrypoint skips its
+    # bootstrap branch entirely and uses our config.
     replace_container rainbow-cryptpad \
         --network frontend \
         --env "CPAD_CONF=/cryptpad/config/config.js" \
         --env "CPAD_MAIN_DOMAIN=https://${host_prefix}docs.${zone}" \
         --env "CPAD_SANDBOX_DOMAIN=https://${host_prefix}docs-sandbox.${zone}" \
-        --volume "$INFRA_DIR/cryptpad/customize/config.js:/cryptpad/config/config.js:ro" \
+        --mount "type=volume,source=rainbow-cryptpad-config,target=/cryptpad/config" \
         --mount "type=volume,source=rainbow-cryptpad-blob,target=/cryptpad/blob" \
         --mount "type=volume,source=rainbow-cryptpad-block,target=/cryptpad/block" \
         --mount "type=volume,source=rainbow-cryptpad-data,target=/cryptpad/data" \

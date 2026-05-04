@@ -1,10 +1,6 @@
 /**
  * Files tools — Seafile REST API. Disabled at boot if SEAFILE_API_TOKEN
  * isn't set (e.g. setup.sh hasn't completed yet).
- *
- * Deferred for Phase 3: download-file and upload-file. They need binary
- * stream handling that doesn't fit the JSON-only MCP tool envelope cleanly.
- * The Phase 6 user-app loader is a better surface for those.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -12,6 +8,12 @@ import { registerListLibraries } from "./libraries.js";
 import { registerListFiles } from "./list.js";
 import { registerSearchFiles } from "./search.js";
 import { registerShareFile } from "./share.js";
+import {
+    registerReadFile,
+    registerWriteFile,
+    registerUploadFile,
+    registerRecentFiles,
+} from "./content.js";
 
 export function registerFileTools(server: McpServer): void {
     if (!process.env.SEAFILE_API_TOKEN) {
@@ -22,4 +24,8 @@ export function registerFileTools(server: McpServer): void {
     registerListFiles(server);
     registerSearchFiles(server);
     registerShareFile(server);
+    registerReadFile(server);
+    registerWriteFile(server);
+    registerUploadFile(server);
+    registerRecentFiles(server);
 }

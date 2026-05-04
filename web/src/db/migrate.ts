@@ -71,6 +71,20 @@ async function ensureTables(client: pg.PoolClient): Promise<void> {
         );
     `);
 
+    // is_home flag: at most one app at a time can be the user's home page
+    // (served at the root of <web-host>). The partial unique index makes
+    // "at most one true" a database-level invariant rather than something
+    // the app layer has to enforce.
+    await client.query(`
+        ALTER TABLE apps
+            ADD COLUMN IF NOT EXISTS is_home boolean NOT NULL DEFAULT false;
+    `);
+    await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS apps_one_home_idx
+            ON apps ((is_home))
+            WHERE is_home = true;
+    `);
+
     // apps_data: shared key/value persistence for all generated apps.
     // Each app sees only its own rows (enforced at the API layer; the
     // rainbow_apps DB role gets row-level granularity later if we expose

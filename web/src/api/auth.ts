@@ -55,7 +55,7 @@ authRouter.get("/callback", async (req: Request, res: Response) => {
             sameSite: "lax",
             maxAge: SESSION_MAX_AGE_MS,
         });
-        res.redirect("/");
+        res.redirect("/dashboard/");
     } catch (err) {
         console.error("[auth] callback failed:", err);
         res.status(500).send("Login failed during token exchange.");

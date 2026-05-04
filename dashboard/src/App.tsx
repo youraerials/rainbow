@@ -37,7 +37,7 @@ function Logomark() {
 
 export function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/dashboard">
       <div style={{ display: "flex", minHeight: "100vh" }}>
         <nav style={styles.sidebar}>
           <div style={styles.logo}>

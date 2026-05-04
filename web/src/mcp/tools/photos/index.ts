@@ -10,6 +10,11 @@ import { registerSearchPhotos } from "./search.js";
 import { registerRecent } from "./recent.js";
 import { registerListAlbums, registerCreateAlbum } from "./albums.js";
 import { registerShareAlbum } from "./share.js";
+import {
+    registerListPeople,
+    registerSearchByFace,
+    registerAddToAlbum,
+} from "./people.js";
 
 export function registerPhotoTools(server: McpServer): void {
     if (!process.env.IMMICH_API_KEY) {
@@ -21,6 +26,9 @@ export function registerPhotoTools(server: McpServer): void {
     registerListAlbums(server);
     registerCreateAlbum(server);
     registerShareAlbum(server);
+    registerListPeople(server);
+    registerSearchByFace(server);
+    registerAddToAlbum(server);
     // upload_photo intentionally deferred: needs multipart/form-data handling
     // and a file source on the server side, which we'd have to design (probably
     // via a /api/upload endpoint that the SPA or generated apps use).

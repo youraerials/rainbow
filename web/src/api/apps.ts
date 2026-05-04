@@ -8,6 +8,8 @@ import {
     listApps,
     getApp,
     deleteApp,
+    setHomeApp,
+    unsetHomeApp,
     getAllAppData,
     getAppData,
     setAppData,
@@ -92,6 +94,24 @@ appsRouter.delete("/:slug", requireDb, async (req, res) => {
     }
     await removeAppFiles(slug);
     res.json({ ok: true });
+});
+
+// ─── home app — at most one app is served at the root of the host ─
+
+appsRouter.post("/:slug/home", requireDb, async (req, res) => {
+    const slug = param(req, "slug");
+    const ok = await setHomeApp(slug);
+    if (!ok) {
+        res.status(404).json({ error: "app not found" });
+        return;
+    }
+    res.json({ ok: true, slug, isHome: true });
+});
+
+appsRouter.delete("/:slug/home", requireDb, async (req, res) => {
+    const slug = param(req, "slug");
+    await unsetHomeApp(slug);
+    res.json({ ok: true, slug, isHome: false });
 });
 
 // ─── per-app key/value data ──────────────────────────────────────

@@ -11,7 +11,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getConfigValue } from "../db/config.js";
 import { createApp } from "../db/apps.js";
-import { listToolNames } from "../mcp/server.js";
+import { listTools } from "../mcp/server.js";
 import { buildSystemPrompt, APP_GENERATION_MODEL, MAX_TOKENS } from "./prompt.js";
 import { parseGeneratedFiles, hasIndexHtml } from "./parse.js";
 import {
@@ -56,7 +56,7 @@ export async function generateApp(input: GenerateInput): Promise<GenerateResult>
         );
     }
 
-    const tools = listToolNames();
+    const tools = listTools();
     const systemPrompt = buildSystemPrompt({
         slug: input.slug,
         availableTools: tools,

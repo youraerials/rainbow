@@ -10,6 +10,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerSearchMedia } from "./search.js";
 import { registerListLibraries } from "./libraries.js";
 import { registerRecent } from "./recent.js";
+import { registerContinueWatching } from "./continue_watching.js";
 
 export function registerMediaTools(server: McpServer): void {
     if (!process.env.JELLYFIN_API_KEY) {
@@ -19,4 +20,5 @@ export function registerMediaTools(server: McpServer): void {
     registerSearchMedia(server);
     registerListLibraries(server);
     registerRecent(server);
+    registerContinueWatching(server);
 }

@@ -8,11 +8,22 @@ interface AppMetadata {
   generatedAt: string;
   generatedBy: string | null;
   model: string | null;
+  isHome: boolean;
 }
 
 interface KeyStatus {
   configured: boolean;
   suffix: string | null;
+}
+
+interface ToolInfo {
+  name: string;
+  description: string;
+  inputSchema: {
+    type?: string;
+    properties?: Record<string, { type?: string; description?: string; enum?: unknown[] }>;
+    required?: string[];
+  };
 }
 
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
@@ -30,6 +41,15 @@ export function AppBuilderView() {
   const [keyStatus, setKeyStatus] = useState<KeyStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [tools, setTools] = useState<ToolInfo[]>([]);
+  const [toolsExpanded, setToolsExpanded] = useState(false);
+  // Per-tool tester state: which tool's tester is open, current inputs,
+  // pending request flag, last response text.
+  const [openTool, setOpenTool] = useState<string | null>(null);
+  const [toolArgs, setToolArgs] = useState<Record<string, string>>({});
+  const [toolRunning, setToolRunning] = useState(false);
+  const [toolResult, setToolResult] = useState<string | null>(null);
+  const [toolError, setToolError] = useState<string | null>(null);
 
   // Form state
   const [name, setName] = useState("");
@@ -42,9 +62,10 @@ export function AppBuilderView() {
 
   async function refresh() {
     try {
-      const [appsResp, keyResp] = await Promise.all([
+      const [appsResp, keyResp, toolsResp] = await Promise.all([
         fetch("/api/apps"),
         fetch("/api/admin/anthropic-key"),
+        fetch("/api/mcp/tools"),
       ]);
       if (appsResp.ok) {
         const data = await appsResp.json();
@@ -57,6 +78,10 @@ export function AppBuilderView() {
       }
       if (keyResp.ok) {
         setKeyStatus(await keyResp.json());
+      }
+      if (toolsResp.ok) {
+        const data = await toolsResp.json();
+        setTools(Array.isArray(data.tools) ? data.tools : []);
       }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
@@ -136,6 +161,114 @@ export function AppBuilderView() {
     }
   }
 
+  function openToolTester(tool: ToolInfo) {
+    if (openTool === tool.name) {
+      setOpenTool(null);
+      return;
+    }
+    setOpenTool(tool.name);
+    setToolResult(null);
+    setToolError(null);
+    // Pre-populate the form with empty strings for each known property.
+    const initial: Record<string, string> = {};
+    for (const k of Object.keys(tool.inputSchema.properties ?? {})) initial[k] = "";
+    setToolArgs(initial);
+  }
+
+  // Convert a user-typed string back to the right JSON Schema type.
+  // Skips empty strings unless the param is required (so "no value" =>
+  // undefined, letting the tool's defaults / optionals kick in).
+  function coerceArg(
+    raw: string,
+    propSchema: { type?: string; enum?: unknown[] } | undefined,
+    required: boolean,
+  ): unknown | undefined {
+    if (raw === "" && !required) return undefined;
+    const t = propSchema?.type;
+    if (t === "number" || t === "integer") {
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : raw;
+    }
+    if (t === "boolean") return raw === "true" || raw === "1" || raw === "on";
+    if (t === "array") {
+      // Accept either JSON array literal or comma-separated.
+      const trimmed = raw.trim();
+      if (trimmed.startsWith("[")) {
+        try {
+          return JSON.parse(trimmed);
+        } catch {
+          /* fall through */
+        }
+      }
+      return trimmed
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    if (t === "object") {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return raw;
+      }
+    }
+    return raw;
+  }
+
+  async function runTool(tool: ToolInfo) {
+    setToolRunning(true);
+    setToolResult(null);
+    setToolError(null);
+    try {
+      const props = tool.inputSchema.properties ?? {};
+      const required = new Set(tool.inputSchema.required ?? []);
+      const argsObj: Record<string, unknown> = {};
+      for (const [name, schema] of Object.entries(props)) {
+        const v = coerceArg(toolArgs[name] ?? "", schema, required.has(name));
+        if (v !== undefined) argsObj[name] = v;
+      }
+      const r = await fetch("/api/mcp/call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: tool.name, arguments: argsObj }),
+      });
+      const data = (await r.json()) as { content?: Array<{ text?: string }>; isError?: boolean; error?: string };
+      if (!r.ok) {
+        setToolError(data.error ?? `HTTP ${r.status}`);
+        return;
+      }
+      const text = data.content?.map((c) => c.text ?? "").join("\n") ?? "(no content)";
+      // Pretty-print JSON-looking results.
+      let pretty = text;
+      try {
+        pretty = JSON.stringify(JSON.parse(text), null, 2);
+      } catch {
+        /* not JSON, leave as-is */
+      }
+      if (data.isError) {
+        setToolError(text);
+      } else {
+        setToolResult(pretty);
+      }
+    } catch (err) {
+      setToolError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setToolRunning(false);
+    }
+  }
+
+  async function handleToggleHome(slug: string, currentlyHome: boolean) {
+    const resp = await fetch(`/api/apps/${encodeURIComponent(slug)}/home`, {
+      method: currentlyHome ? "DELETE" : "POST",
+    });
+    if (resp.ok) {
+      await refresh();
+    } else {
+      const data = await resp.json().catch(() => ({}));
+      alert(data.error ?? `Update failed (HTTP ${resp.status}).`);
+    }
+  }
+
   const hasKey = keyStatus?.configured === true;
 
   return (
@@ -169,6 +302,158 @@ export function AppBuilderView() {
       )}
 
       {loadError && <div style={styles.error}>{loadError}</div>}
+
+      {tools.length > 0 && (
+        <div style={styles.toolsPanel}>
+          <button
+            type="button"
+            style={styles.toolsToggle}
+            onClick={() => setToolsExpanded((v) => !v)}
+          >
+            <span>
+              {tools.length} MCP {tools.length === 1 ? "tool" : "tools"} available
+              {" "}
+              <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>
+                — what Claude can use in apps you build
+              </span>
+            </span>
+            <span style={styles.toolsToggleChevron}>
+              {toolsExpanded ? "▾" : "▸"}
+            </span>
+          </button>
+          {toolsExpanded && (
+            <ul style={styles.toolsList}>
+              {tools.map((t) => {
+                const propEntries = Object.entries(t.inputSchema.properties ?? {});
+                const required = new Set(t.inputSchema.required ?? []);
+                const isOpen = openTool === t.name;
+                return (
+                  <li key={t.name} style={styles.toolItem}>
+                    <div style={styles.toolItemHeader}>
+                      <div>
+                        <code style={styles.toolName}>{t.name}</code>
+                        {t.description && (
+                          <span style={styles.toolDesc}> — {t.description}</span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openToolTester(t)}
+                        style={isOpen ? styles.tryBtnActive : styles.tryBtn}
+                      >
+                        {isOpen ? "Close" : "Try"}
+                      </button>
+                    </div>
+                    {propEntries.length > 0 && !isOpen && (
+                      <ul style={styles.paramList}>
+                        {propEntries.map(([pname, pschema]) => (
+                          <li key={pname} style={styles.paramItem}>
+                            <code>{pname}</code>
+                            <span style={styles.paramType}>
+                              {": "}{String(pschema.type ?? "any")}
+                              {required.has(pname) ? "" : " (optional)"}
+                            </span>
+                            {pschema.description && (
+                              <span style={styles.paramDesc}> — {pschema.description}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {isOpen && (
+                      <div style={styles.testerBox}>
+                        {propEntries.length === 0 ? (
+                          <p style={styles.subtle}>No arguments. Click Run.</p>
+                        ) : (
+                          propEntries.map(([pname, pschema]) => {
+                            const isRequired = required.has(pname);
+                            const t_ = pschema.type ?? "any";
+                            const placeholder =
+                              t_ === "array"
+                                ? "comma-separated, or [JSON, array]"
+                                : t_ === "boolean"
+                                  ? "true | false"
+                                  : t_ === "object"
+                                    ? '{ "json": "object" }'
+                                    : `${t_}${isRequired ? "" : " (optional)"}`;
+                            return (
+                              <div key={pname} style={styles.testerField}>
+                                <label style={styles.testerLabel}>
+                                  <code>{pname}</code>
+                                  <span style={styles.paramType}>
+                                    {" "}{String(t_)}{isRequired ? " *" : ""}
+                                  </span>
+                                  {pschema.description && (
+                                    <span style={styles.paramDesc}> — {pschema.description}</span>
+                                  )}
+                                </label>
+                                {t_ === "boolean" ? (
+                                  <select
+                                    style={styles.testerInput}
+                                    value={toolArgs[pname] ?? ""}
+                                    onChange={(e) =>
+                                      setToolArgs((prev) => ({ ...prev, [pname]: e.target.value }))
+                                    }
+                                  >
+                                    <option value="">{isRequired ? "—" : "(omit)"}</option>
+                                    <option value="true">true</option>
+                                    <option value="false">false</option>
+                                  </select>
+                                ) : Array.isArray(pschema.enum) ? (
+                                  <select
+                                    style={styles.testerInput}
+                                    value={toolArgs[pname] ?? ""}
+                                    onChange={(e) =>
+                                      setToolArgs((prev) => ({ ...prev, [pname]: e.target.value }))
+                                    }
+                                  >
+                                    <option value="">{isRequired ? "—" : "(omit)"}</option>
+                                    {pschema.enum.map((v) => (
+                                      <option key={String(v)} value={String(v)}>
+                                        {String(v)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type={t_ === "number" || t_ === "integer" ? "number" : "text"}
+                                    style={styles.testerInput}
+                                    placeholder={placeholder}
+                                    value={toolArgs[pname] ?? ""}
+                                    onChange={(e) =>
+                                      setToolArgs((prev) => ({ ...prev, [pname]: e.target.value }))
+                                    }
+                                  />
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                        <div style={styles.testerActions}>
+                          <button
+                            type="button"
+                            onClick={() => runTool(t)}
+                            disabled={toolRunning}
+                            style={toolRunning ? styles.runBtnDisabled : styles.runBtn}
+                          >
+                            {toolRunning ? "Running…" : "Run"}
+                          </button>
+                        </div>
+                        {toolError && (
+                          <pre style={styles.testerError}>{toolError}</pre>
+                        )}
+                        {toolResult !== null && (
+                          <pre style={styles.testerResult}>{toolResult}</pre>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
 
       {showForm && hasKey && (
         <form onSubmit={handleGenerate} style={styles.form}>
@@ -286,7 +571,14 @@ export function AppBuilderView() {
           {apps.map((app) => (
             <div key={app.slug} style={styles.appCard}>
               <div style={styles.appCardHeader}>
-                <span style={{ fontWeight: 600 }}>{app.name}</span>
+                <span style={{ fontWeight: 600 }}>
+                  {app.name}
+                  {app.isHome && (
+                    <span style={styles.homeBadge} title="Served at the root of your domain">
+                      home
+                    </span>
+                  )}
+                </span>
                 <code style={styles.slugTag}>{app.slug}</code>
               </div>
               {app.description && (
@@ -312,6 +604,14 @@ export function AppBuilderView() {
                 <span style={{ fontSize: 12, color: "var(--text-dim)" }}>
                   {new Date(app.generatedAt).toLocaleDateString()}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => handleToggleHome(app.slug, app.isHome)}
+                  style={app.isHome ? styles.homeBtnActive : styles.homeBtn}
+                  title={app.isHome ? "Stop serving this at the root of your domain" : "Serve this at the root of your domain"}
+                >
+                  {app.isHome ? "Unset home" : "Set as home"}
+                </button>
                 <button
                   type="button"
                   onClick={() => handleDelete(app.slug)}
@@ -502,5 +802,204 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "4px 10px",
     fontSize: 12,
     cursor: "pointer",
+  },
+  homeBtn: {
+    background: "transparent",
+    color: "var(--text)",
+    border: "1px solid var(--border)",
+    borderRadius: 4,
+    padding: "4px 10px",
+    fontSize: 12,
+    cursor: "pointer",
+  },
+  homeBtnActive: {
+    background: "var(--text)",
+    color: "var(--surface)",
+    border: "1px solid var(--text)",
+    borderRadius: 4,
+    padding: "4px 10px",
+    fontSize: 12,
+    cursor: "pointer",
+  },
+  homeBadge: {
+    marginLeft: 8,
+    fontSize: 10,
+    fontWeight: 600,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    background: "var(--text)",
+    color: "var(--surface)",
+    padding: "2px 6px",
+    borderRadius: 2,
+  },
+  toolsPanel: {
+    border: "1px solid var(--border)",
+    borderRadius: 4,
+    padding: 0,
+    marginBottom: 16,
+    background: "var(--surface)",
+  },
+  toolsToggle: {
+    width: "100%",
+    background: "transparent",
+    border: "none",
+    padding: "0.85rem 1rem",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: 14,
+    color: "var(--text)",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontWeight: 600,
+    textAlign: "left",
+  },
+  toolsToggleChevron: {
+    color: "var(--text-dim)",
+    fontSize: 12,
+  },
+  toolsList: {
+    listStyle: "none",
+    padding: "0 1rem 1rem",
+    margin: 0,
+    borderTop: "1px solid var(--border)",
+  },
+  toolItem: {
+    padding: "0.75rem 0",
+    borderBottom: "1px solid var(--border, #00000010)",
+    fontSize: 13,
+  },
+  toolName: {
+    fontFamily: "var(--font-mono, ui-monospace, SF Mono, Menlo, monospace)",
+    fontSize: 13,
+    color: "var(--text)",
+    fontWeight: 600,
+  },
+  toolDesc: {
+    color: "var(--text-dim)",
+  },
+  paramList: {
+    listStyle: "none",
+    padding: 0,
+    margin: "0.4rem 0 0 1rem",
+  },
+  paramItem: {
+    fontSize: 12,
+    color: "var(--text-dim)",
+    margin: "0.15rem 0",
+  },
+  paramType: {
+    color: "var(--text-dim)",
+    fontFamily: "var(--font-mono, ui-monospace, SF Mono, Menlo, monospace)",
+  },
+  paramDesc: {
+    color: "var(--text-dim)",
+  },
+  toolItemHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "0.75rem",
+  },
+  tryBtn: {
+    fontSize: 11,
+    padding: "3px 10px",
+    border: "1px solid var(--border)",
+    background: "transparent",
+    color: "var(--text)",
+    borderRadius: 3,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    fontFamily: "inherit",
+  },
+  tryBtnActive: {
+    fontSize: 11,
+    padding: "3px 10px",
+    border: "1px solid var(--text)",
+    background: "var(--text)",
+    color: "var(--surface)",
+    borderRadius: 3,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    fontFamily: "inherit",
+  },
+  testerBox: {
+    marginTop: "0.6rem",
+    padding: "0.75rem",
+    border: "1px solid var(--border)",
+    borderRadius: 3,
+    background: "var(--surface-hover, #00000008)",
+  },
+  testerField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.25rem",
+    marginBottom: "0.6rem",
+  },
+  testerLabel: {
+    fontSize: 12,
+  },
+  testerInput: {
+    fontFamily: "var(--font-mono, ui-monospace, SF Mono, Menlo, monospace)",
+    fontSize: 12,
+    padding: "0.4rem 0.55rem",
+    border: "1px solid var(--border)",
+    borderRadius: 3,
+    background: "var(--surface)",
+    color: "var(--text)",
+  },
+  testerActions: {
+    marginTop: "0.4rem",
+  },
+  runBtn: {
+    fontSize: 12,
+    padding: "0.4rem 1rem",
+    border: "1px solid var(--text)",
+    background: "var(--text)",
+    color: "var(--surface)",
+    borderRadius: 3,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontWeight: 600,
+  },
+  runBtnDisabled: {
+    fontSize: 12,
+    padding: "0.4rem 1rem",
+    border: "1px solid var(--border)",
+    background: "var(--border)",
+    color: "var(--text-dim)",
+    borderRadius: 3,
+    cursor: "not-allowed",
+    fontFamily: "inherit",
+  },
+  testerError: {
+    marginTop: "0.6rem",
+    padding: "0.5rem 0.75rem",
+    background: "var(--error-bg, #b0002012)",
+    border: "1px solid var(--error, #b00020)",
+    borderRadius: 3,
+    color: "var(--error, #b00020)",
+    fontFamily: "var(--font-mono, ui-monospace, SF Mono, Menlo, monospace)",
+    fontSize: 11,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+  },
+  testerResult: {
+    marginTop: "0.6rem",
+    padding: "0.5rem 0.75rem",
+    background: "var(--surface)",
+    border: "1px solid var(--border)",
+    borderRadius: 3,
+    fontFamily: "var(--font-mono, ui-monospace, SF Mono, Menlo, monospace)",
+    fontSize: 11,
+    overflowX: "auto",
+    whiteSpace: "pre",
+    maxHeight: 320,
+    overflowY: "auto",
+  },
+  subtle: {
+    color: "var(--text-dim)",
+    fontSize: 12,
+    margin: 0,
   },
 };

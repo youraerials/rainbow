@@ -9,8 +9,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerHealthCheck } from "./health.js";
 import { registerListServices } from "./services.js";
+import { registerMe } from "./me.js";
 
 export function registerSystemTools(server: McpServer): void {
     registerHealthCheck(server);
     registerListServices(server);
+    registerMe(server);
 }
