@@ -25,7 +25,7 @@ interface PhaseRecord {
   log: { line: string; stream?: string }[];
 }
 
-const DRY_RUN = true; // ← keep dry-run on while the user has another stack running
+const DRY_RUN = false;
 
 export function ProvisionStep({ state, onContinue, onBack }: StepProps) {
   const [phases, setPhases] = useState<PhaseRecord[]>([]);

@@ -92,10 +92,16 @@ path, version, size, sha, hero_meta = sys.argv[1:6]
 text = pathlib.Path(path).read_text()
 
 # 1. Hero CTA — the <span class="btn-meta" id="download-meta">…</span>.
-#    The opening tag may wrap across lines (`<span class="btn-meta"
-#    id="download-meta"\n              >…`), so [\s\S]*? is required.
+#    Both the opening AND closing tags can wrap across lines under
+#    prettier — opening is `<span class="btn-meta"\n  id="download-meta"\n  >…`
+#    and closing is `…</span\n  >`. So we match `</span\s*>` for the
+#    close. Prior bug: matching `</span>` literally let the non-greedy
+#    body chew through everything until the next non-wrapped `</span>`,
+#    which happened to be hundreds of lines later in the manifesto
+#    section — and the substitution replaced all of it with the new
+#    meta string. See the v0.1.13 incident.
 text = re.sub(
-    r'(<span class="btn-meta" id="download-meta"[\s\S]*?>)[\s\S]*?(</span>)',
+    r'(<span class="btn-meta" id="download-meta"[\s\S]*?>)[\s\S]*?(</span\s*>)',
     rf'\g<1>{hero_meta}\g<2>',
     text,
     count=1,
