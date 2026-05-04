@@ -142,12 +142,12 @@ for _ in $(seq 1 60); do
 done
 [ -n "$SETUP_IP" ] || fail "setup container never got an IP"
 
-WIZARD_URL="http://$SETUP_IP:3000/"
+WIZARD_URL="http://$SETUP_IP:47080/"
 
 # Wait for the wizard to actually serve HTTP. The container starts a
-# few seconds before node is listening on :3000, and the progress
-# page redirects the moment .wizard-url appears — so we don't write
-# that file until a real HTTP response comes back.
+# few seconds before node is listening, and the progress page
+# redirects the moment .wizard-url appears — so we don't write that
+# file until a real HTTP response comes back.
 log "Waiting for wizard HTTP at $WIZARD_URL…"
 for _ in $(seq 1 60); do
     if /usr/bin/curl -sSf -m 2 -o /dev/null "$WIZARD_URL"; then

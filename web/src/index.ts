@@ -29,7 +29,10 @@ import { migrate } from "./db/migrate.js";
 import { isConfigured as dbConfigured } from "./db/pool.js";
 import { setupRouter } from "./setup/router.js";
 
-const PORT = Number(process.env.PORT ?? 3000);
+// 47080 is uncommon (most local dev tooling clusters around :3000, :8080,
+// :5000). Container-internal under Apple Container, but a less-trafficked
+// number sidesteps host-side conflicts that surface as install hangs.
+const PORT = Number(process.env.PORT ?? 47080);
 const DASHBOARD_DIR = process.env.RAINBOW_DASHBOARD_DIR ?? "/usr/share/web/dashboard";
 const APPS_DIR = process.env.RAINBOW_APPS_DIR ?? "/var/lib/rainbow/apps";
 
@@ -55,8 +58,11 @@ if (SETUP_MODE) {
     console.log("[rainbow-web] booting in SETUP MODE");
     app.use("/api/setup", setupRouter);
 
-    // SPA + fallback. Wizard is a separate top-level React component in
-    // the same bundle.
+    // The dashboard SPA is built with Vite `base: "/dashboard/"`, so its
+    // index.html references `/dashboard/assets/...`. We mount the static
+    // bundle at /dashboard so those URLs resolve, and also at / so the
+    // wizard URL itself (http://<setup-ip>:port/) serves index.html.
+    app.use("/dashboard", express.static(DASHBOARD_DIR, { index: "index.html" }));
     app.use(express.static(DASHBOARD_DIR, { index: "index.html" }));
     app.use((req, res, next) => {
         if (req.method !== "GET") return next();

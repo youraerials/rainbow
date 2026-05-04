@@ -539,7 +539,7 @@ start_caddy() {
     local caddyfile="$INFRA_DIR/caddy/Caddyfile.compiled"
     [ -f "$caddyfile" ] || caddyfile="$INFRA_DIR/caddy/Caddyfile"
     # The dashboard SPA is now served by the rainbow-web container, not by
-    # Caddy directly — Caddy just reverse_proxies <prefix>-app.<zone> → web:3000.
+    # Caddy directly — Caddy just reverse_proxies <prefix>-app.<zone> → web:47080.
     replace_container rainbow-caddy \
         --network frontend \
         --volume "$caddyfile:/etc/caddy/Caddyfile:ro" \

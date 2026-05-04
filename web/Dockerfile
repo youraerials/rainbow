@@ -24,7 +24,7 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=47080
 ENV RAINBOW_DASHBOARD_DIR=/usr/share/web/dashboard
 ENV RAINBOW_APPS_DIR=/var/lib/rainbow/apps
 
