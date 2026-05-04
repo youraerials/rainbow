@@ -58,12 +58,26 @@ fi
 
 AUTH_HEADER="Authorization: Bearer $TOKEN"
 
-# ─── Sanity check: API reachable ─────────────────────────────────
+# ─── Sanity check: API reachable + token works ──────────────────
+# Retry loop matters here: by the time we run, Authentik has passed
+# /-/health/ready/ (wait-authentik phase) and setup-providers has
+# succeeded. But restart-web (the previous wizard phase) reloads
+# Caddy, and there's a brief window where requests through the
+# tunnel get a 502/401 while routes settle. Without retries we
+# bail on the first blip even though the system is fine 5s later.
 echo "Checking Authentik at $AUTHENTIK_URL..."
-me=$(curl -sS -m 10 -H "$AUTH_HEADER" "$AUTHENTIK_URL/api/v3/core/users/me/" \
-    | jq -r '.user.username // empty' 2>/dev/null || echo "")
+me=""
+for attempt in $(seq 1 30); do
+    me=$(curl -sS -m 8 -H "$AUTH_HEADER" "$AUTHENTIK_URL/api/v3/core/users/me/" \
+        | jq -r '.user.username // empty' 2>/dev/null || echo "")
+    [ -n "$me" ] && break
+    if [ "$attempt" -eq 1 ]; then
+        echo "  not ready yet — retrying for up to 60s"
+    fi
+    sleep 2
+done
 if [ -z "$me" ]; then
-    echo "ERROR: Could not authenticate to Authentik. Check the token." >&2
+    echo "ERROR: Could not authenticate to Authentik after 60s. Check the token." >&2
     exit 1
 fi
 echo "  Authenticated as: $me"
