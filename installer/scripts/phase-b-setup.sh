@@ -84,8 +84,7 @@ CONTROL_TOKEN=$(/usr/bin/security find-generic-password \
 
 log "Starting setup wizard container..."
 "$BIN_DIR/container" network create frontend >/dev/null 2>&1 || true
-"$BIN_DIR/container" delete --force rainbow-setup        >/dev/null 2>&1 || true
-"$BIN_DIR/container" delete --force rainbow-setup-tunnel >/dev/null 2>&1 || true
+"$BIN_DIR/container" delete --force rainbow-setup >/dev/null 2>&1 || true
 
 "$BIN_DIR/container" run -d --name rainbow-setup \
     --network frontend \
@@ -102,15 +101,12 @@ log "Starting setup wizard container..."
     rainbow-web:latest >> "$LOG_FILE" 2>&1 \
     || fail "setup container failed to start"
 
-# Apple Container's vmnet networks are fully isolated from the host
-# — the user's browser can't reach the wizard at its container IP
-# directly, and `--publish` is not yet wired up in 0.12. So we expose
-# the wizard via a transient TryCloudflare tunnel: a sidecar
-# cloudflared container on the same network connects to the wizard
-# by IP and gets a random *.trycloudflare.com URL we hand to the
-# browser. The tunnel is destroyed when setup completes.
-#
-# Get the wizard's IP first so we can point the tunnel at it.
+# Apple Container creates a host-side bridge interface (e.g. bridge100)
+# and routes for the container subnet on a clean apiserver start, so
+# the host can reach the wizard at its container IP directly. (Phase
+# A does a clean stop+start to ensure that's the case — without it,
+# stale vmnet plugin processes from prior runs leave the bridge
+# unconfigured.)
 SETUP_IP=""
 for _ in $(seq 1 60); do
     SETUP_IP=$("$BIN_DIR/container" inspect rainbow-setup 2>/dev/null \
@@ -121,36 +117,18 @@ for _ in $(seq 1 60); do
 done
 [ -n "$SETUP_IP" ] || fail "setup container never got an IP"
 
-log "Starting setup tunnel (cloudflared → http://$SETUP_IP:3000)..."
-"$BIN_DIR/container" run -d --name rainbow-setup-tunnel \
-    --network frontend \
-    docker.io/cloudflare/cloudflared:latest \
-    tunnel --no-autoupdate --url "http://$SETUP_IP:3000" \
-    >> "$LOG_FILE" 2>&1 \
-    || fail "setup tunnel failed to start"
+WIZARD_URL="http://$SETUP_IP:3000/"
 
-# Parse the random *.trycloudflare.com URL from cloudflared's logs.
-# It prints a banner like "Visit it at: https://<words>.trycloudflare.com"
-# within ~10 seconds of starting.
-WIZARD_URL=""
-for _ in $(seq 1 60); do
-    WIZARD_URL=$("$BIN_DIR/container" logs rainbow-setup-tunnel 2>/dev/null \
-        | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | head -1)
-    if [ -n "$WIZARD_URL" ]; then break; fi
-    sleep 1
-done
-[ -n "$WIZARD_URL" ] || fail "couldn't find trycloudflare URL in cloudflared logs"
-
-# Wait for the wizard to actually respond through the tunnel — the
-# tunnel handshakes a couple of seconds after the URL appears, and
-# the progress page redirects the moment .wizard-url appears so we
-# don't write it until real HTTP comes back.
+# Wait for the wizard to actually serve HTTP. The container starts a
+# few seconds before node is listening on :3000, and the progress
+# page redirects the moment .wizard-url appears — so we don't write
+# that file until a real HTTP response comes back.
 log "Waiting for wizard HTTP at $WIZARD_URL…"
 for _ in $(seq 1 60); do
-    if /usr/bin/curl -sSf -m 5 -o /dev/null "$WIZARD_URL"; then
+    if /usr/bin/curl -sSf -m 2 -o /dev/null "$WIZARD_URL"; then
         break
     fi
-    sleep 2
+    sleep 1
 done
 
 echo "$WIZARD_URL" > "$INSTALL_DIR/.wizard-url"

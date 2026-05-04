@@ -89,24 +89,27 @@ toast "Rainbow" "Initializing container runtime"
 # install. See incident notes 2026-05-03.
 log "Starting container system…"
 
-# If an apiserver is already loaded from somewhere else (commonly a
-# prior `brew install container` install, even one that's since been
-# uninstalled — the process keeps running with the deleted binary
-# loaded in memory), bootout so our .pkg-installed apiserver can take
-# over with the correct paths. The bootout does kill any running
-# container runtimes spawned by the old apiserver, but a Rainbow
-# install is replacing those anyway.
-EXISTING_PROGRAM=$(sudo -u "$PRIMARY_USER" launchctl print \
-    "gui/$USER_ID/com.apple.container.apiserver" 2>/dev/null \
-    | awk '/^[[:space:]]*program = /{print $3; exit}')
-if [ -n "$EXISTING_PROGRAM" ] \
-        && [ "$EXISTING_PROGRAM" != "/usr/local/bin/container-apiserver" ]; then
-    log "Existing apiserver loaded from $EXISTING_PROGRAM — replacing with the one from /usr/local/bin"
+# Clean restart of the container system. Two reasons:
+#   1. If a prior install (or a brew-installed `container`) left an
+#      apiserver loaded from a different path, we need it gone so our
+#      .pkg's apiserver at /usr/local/bin/container-apiserver can take
+#      over with correct paths. Common case: brew uninstall left the
+#      apiserver process running with its binary deleted in memory.
+#   2. Each install needs the network plugins (container-network-vmnet
+#      for default/frontend/backend) to come up fresh. If they're stale
+#      from a prior run, the host-side bridge interface (bridge100,
+#      etc.) doesn't get configured, and host->container traffic
+#      silently fails. Confirmed via repro 2026-05-03.
+sudo -u "$PRIMARY_USER" /usr/local/bin/container system stop \
+    >> "$LOG_FILE" 2>&1 || true
+sudo -u "$PRIMARY_USER" launchctl bootout \
+    "gui/$USER_ID/com.apple.container.apiserver" >/dev/null 2>&1 || true
+for plugin in default backend frontend; do
     sudo -u "$PRIMARY_USER" launchctl bootout \
-        "gui/$USER_ID/com.apple.container.apiserver" \
+        "gui/$USER_ID/com.apple.container.container-network-vmnet.$plugin" \
         >/dev/null 2>&1 || true
-    sleep 2
-fi
+done
+sleep 2
 
 sudo -u "$PRIMARY_USER" /usr/local/bin/container system start --enable-kernel-install \
     >> "$LOG_FILE" 2>&1 || true

@@ -18,7 +18,7 @@
 # Apple ships container as a signed .pkg installer. Our fetch helper
 # detects the .pkg suffix and runs `installer` against it, then
 # symlinks the resulting `/usr/local/bin/container` into our bin dir.
-CONTAINER_VERSION="0.12.3"
+CONTAINER_VERSION="0.11.0"
 CONTAINER_URL="https://github.com/apple/container/releases/download/${CONTAINER_VERSION}/container-${CONTAINER_VERSION}-installer-signed.pkg"
 CONTAINER_MEMBER=""
 CONTAINER_SHA256=""
