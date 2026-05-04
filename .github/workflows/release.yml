@@ -37,7 +37,12 @@ jobs:
   # First push creates the package as private — flip it to public
   # once at github.com/users/<owner>/packages/container/rainbow-web/settings.
   build-image:
-    runs-on: ubuntu-latest
+    # Native arm64 Linux runner — avoids QEMU emulation entirely.
+    # When this was on `ubuntu-latest` (x86_64), `npm ci` for the
+    # build stage crashed with `qemu: uncaught target signal 4
+    # (Illegal instruction)` mid-install, and buildx silently looped
+    # retrying it forever. Native runner = no QEMU = no crash.
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -67,9 +72,6 @@ jobs:
           REF_LATEST="ghcr.io/${OWNER_LC}/rainbow-web:latest"
           echo "ref=$REF"               >> "$GITHUB_OUTPUT"
           echo "ref_latest=$REF_LATEST" >> "$GITHUB_OUTPUT"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
