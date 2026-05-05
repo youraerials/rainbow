@@ -18,6 +18,7 @@ import {
 import { isConfigured as dbConfigured } from "../db/pool.js";
 import { removeAppFiles } from "../apps/files.js";
 import { generateApp } from "../apps/generate.js";
+import { editApp } from "../apps/edit.js";
 
 export const appsRouter = Router();
 
@@ -83,6 +84,31 @@ appsRouter.get("/:slug", requireDb, async (req, res) => {
         return;
     }
     res.json(app);
+});
+
+// POST /api/apps/:slug/edit — apply a conversational edit to an existing app.
+// Body: { instruction: "describe the change" }. Files Claude omits stay
+// on disk untouched.
+appsRouter.post("/:slug/edit", requireDb, async (req: Request, res: Response) => {
+    const slug = param(req, "slug");
+    const body = req.body as { instruction?: unknown } | undefined;
+    const instruction = typeof body?.instruction === "string" ? body.instruction : "";
+    if (!instruction.trim()) {
+        res.status(400).json({ error: "missing 'instruction'" });
+        return;
+    }
+    try {
+        const result = await editApp({
+            slug,
+            instruction,
+            webHost: WEB_HOST,
+        });
+        res.json(result);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const status = /not found|invalid|missing|no Anthropic/.test(message) ? 400 : 500;
+        res.status(status).json({ error: message });
+    }
 });
 
 appsRouter.delete("/:slug", requireDb, async (req, res) => {

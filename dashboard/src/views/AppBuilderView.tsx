@@ -60,6 +60,14 @@ export function AppBuilderView() {
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
 
+  // Edit-an-existing-app state. `editingSlug` is the slug of the app
+  // whose inline editor is currently open; null means no editor open.
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
+  const [editInstruction, setEditInstruction] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState<string | null>(null);
+
   async function refresh() {
     try {
       const [appsResp, keyResp, toolsResp] = await Promise.all([
@@ -254,6 +262,57 @@ export function AppBuilderView() {
       setToolError(err instanceof Error ? err.message : String(err));
     } finally {
       setToolRunning(false);
+    }
+  }
+
+  function openEditor(slug: string) {
+    if (editingSlug === slug) {
+      setEditingSlug(null);
+      setEditInstruction("");
+      setEditError(null);
+      setEditSuccess(null);
+      return;
+    }
+    setEditingSlug(slug);
+    setEditInstruction("");
+    setEditError(null);
+    setEditSuccess(null);
+  }
+
+  async function handleEdit(e: FormEvent, slug: string) {
+    e.preventDefault();
+    if (editing) return;
+    if (!editInstruction.trim()) {
+      setEditError("Describe what you'd like changed.");
+      return;
+    }
+    setEditing(true);
+    setEditError(null);
+    setEditSuccess(null);
+    try {
+      const resp = await fetch(`/api/apps/${encodeURIComponent(slug)}/edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction: editInstruction.trim() }),
+      });
+      const data = (await resp.json().catch(() => ({}))) as {
+        error?: string;
+        changedFiles?: { path: string }[];
+      };
+      if (!resp.ok) {
+        setEditError(data.error ?? `Edit failed (HTTP ${resp.status}).`);
+        return;
+      }
+      const list = data.changedFiles?.map((f) => f.path).join(", ") ?? "";
+      setEditSuccess(
+        list ? `Updated ${list}.` : "Updated.",
+      );
+      setEditInstruction("");
+      await refresh();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEditing(false);
     }
   }
 
@@ -614,6 +673,15 @@ export function AppBuilderView() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => openEditor(app.slug)}
+                  style={editingSlug === app.slug ? styles.editBtnActive : styles.editBtn}
+                  title="Describe a change to apply to this app"
+                  disabled={!hasKey}
+                >
+                  {editingSlug === app.slug ? "Close edit" : "Edit"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleDelete(app.slug)}
                   style={styles.deleteBtn}
                   title="Delete app"
@@ -621,6 +689,48 @@ export function AppBuilderView() {
                   Delete
                 </button>
               </div>
+              {editingSlug === app.slug && (
+                <form onSubmit={(e) => handleEdit(e, app.slug)} style={styles.editForm}>
+                  {app.prompt && (
+                    <div style={styles.editContext}>
+                      <div style={styles.editContextLabel}>Original brief</div>
+                      <div style={styles.editContextBody}>{app.prompt}</div>
+                    </div>
+                  )}
+                  <label style={styles.editLabel} htmlFor={`edit-${app.slug}`}>
+                    Describe what to change
+                  </label>
+                  <textarea
+                    id={`edit-${app.slug}`}
+                    value={editInstruction}
+                    onChange={(e) => setEditInstruction(e.target.value)}
+                    rows={4}
+                    placeholder="The page won't scroll on long content — fix the overflow so the body scrolls vertically."
+                    style={styles.editTextarea}
+                    disabled={editing}
+                    autoFocus
+                  />
+                  {editError && <div style={styles.editError}>{editError}</div>}
+                  {editSuccess && <div style={styles.editSuccess}>{editSuccess}</div>}
+                  <div style={styles.editFormRow}>
+                    <button
+                      type="button"
+                      onClick={() => openEditor(app.slug)}
+                      style={styles.secondaryBtn}
+                      disabled={editing}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      style={editing ? styles.createBtnDisabled : styles.createBtn}
+                      disabled={editing || !editInstruction.trim()}
+                    >
+                      {editing ? "Applying…" : "Apply change"}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           ))}
         </div>
@@ -820,6 +930,82 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "4px 10px",
     fontSize: 12,
     cursor: "pointer",
+  },
+  editBtn: {
+    background: "transparent",
+    color: "var(--text)",
+    border: "1px solid var(--border)",
+    borderRadius: 4,
+    padding: "4px 10px",
+    fontSize: 12,
+    cursor: "pointer",
+  },
+  editBtnActive: {
+    background: "var(--surface-hover)",
+    color: "var(--text)",
+    border: "1px solid var(--text)",
+    borderRadius: 4,
+    padding: "4px 10px",
+    fontSize: 12,
+    cursor: "pointer",
+  },
+  editForm: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTop: "1px solid var(--border)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  editContext: {
+    background: "var(--surface)",
+    border: "1px solid var(--border)",
+    padding: "10px 12px",
+    fontSize: 13,
+  },
+  editContextLabel: {
+    fontFamily: "var(--font-body)",
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: "0.14em",
+    textTransform: "uppercase",
+    color: "var(--text-dim)",
+    marginBottom: 6,
+  },
+  editContextBody: {
+    color: "var(--text-dim)",
+    whiteSpace: "pre-wrap" as const,
+    lineHeight: 1.5,
+  },
+  editLabel: {
+    fontFamily: "var(--font-body)",
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: "0.06em",
+    color: "var(--text)",
+  },
+  editTextarea: {
+    fontFamily: "var(--font-body)",
+    fontSize: 14,
+    padding: "10px 12px",
+    border: "1px solid var(--border)",
+    background: "var(--bg)",
+    color: "var(--text)",
+    resize: "vertical" as const,
+    minHeight: 90,
+  },
+  editError: {
+    color: "var(--red, #a64242)",
+    fontSize: 13,
+  },
+  editSuccess: {
+    color: "var(--green, #4f7a4d)",
+    fontSize: 13,
+  },
+  editFormRow: {
+    display: "flex",
+    gap: 8,
+    justifyContent: "flex-end",
   },
   homeBadge: {
     marginLeft: 8,

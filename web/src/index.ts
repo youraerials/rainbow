@@ -184,20 +184,173 @@ if (SETUP_MODE) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Rainbow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..900,0..100,0..1&family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-           max-width: 32rem; margin: 8rem auto; padding: 0 1.5rem;
-           line-height: 1.5; color: #1a1612; }
-    h1 { font-weight: 400; font-size: 2rem; letter-spacing: -0.02em; margin: 0 0 .5rem; }
-    p { color: #514738; margin: 0 0 1rem; }
-    a { color: #1a1612; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f4ecd8;
+      --surface: #ece1c7;
+      --border: #b3a888;
+      --text: #1a1612;
+      --text-dim: #514738;
+    }
+    html, body {
+      font-family: "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      font-size: clamp(15px, 0.9vw + 11px, 17px);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(26, 22, 18, 0.025), transparent 50%),
+        radial-gradient(circle at 80% 100%, rgba(26, 22, 18, 0.03), transparent 55%),
+        var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      position: relative;
+      overflow-x: hidden;
+    }
+    main {
+      max-width: 36rem;
+      width: 100%;
+      text-align: left;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      margin-bottom: 3rem;
+      color: var(--text);
+    }
+    .logo svg { display: block; }
+    .wordmark {
+      font-family: "Fraunces", "Iowan Old Style", Georgia, serif;
+      font-style: italic;
+      font-size: 1.7rem;
+      font-weight: 500;
+      letter-spacing: -0.03em;
+      font-variation-settings: "opsz" 60, "SOFT" 80, "WONK" 0;
+    }
+    .eyebrow {
+      font-size: 0.78rem;
+      font-weight: 500;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 1rem;
+    }
+    h1 {
+      font-family: "Fraunces", "Iowan Old Style", Georgia, serif;
+      font-weight: 300;
+      font-size: clamp(2.4rem, 5vw, 3.6rem);
+      letter-spacing: -0.025em;
+      line-height: 1.05;
+      color: var(--text);
+      margin-bottom: 1.5rem;
+    }
+    h1 em {
+      font-style: italic;
+      font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+    }
+    .lede {
+      font-size: 1.05rem;
+      color: var(--text-dim);
+      max-width: 30rem;
+      margin-bottom: 2.25rem;
+    }
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .btn-primary {
+      display: inline-block;
+      background: var(--text);
+      color: var(--bg);
+      padding: 0.75rem 1.4rem;
+      border: 1px solid var(--text);
+      font-family: inherit;
+      font-size: 0.95rem;
+      text-decoration: none;
+      transition: all 220ms cubic-bezier(0.2, 0.65, 0.35, 1);
+    }
+    .btn-primary:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 6px 6px 0 var(--border);
+      background: var(--text-dim);
+    }
+    .btn-primary:active {
+      transform: translate(0, 0);
+      box-shadow: 0 0 0 transparent;
+    }
+    .btn-secondary {
+      color: var(--text-dim);
+      text-decoration: underline;
+      text-decoration-color: var(--border);
+      text-underline-offset: 3px;
+      font-size: 0.92rem;
+      padding: 0.75rem 0.5rem;
+    }
+    .btn-secondary:hover { color: var(--text); text-decoration-color: var(--text); }
+    .footnote {
+      margin-top: 3rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      max-width: 30rem;
+    }
+    .footnote a {
+      color: var(--text);
+      text-decoration: underline;
+      text-decoration-color: var(--border);
+      text-underline-offset: 2px;
+    }
+    .footnote a:hover { text-decoration-color: var(--text); }
   </style>
 </head>
 <body>
-  <h1>Welcome to your Rainbow.</h1>
-  <p>This is your domain. Set a home page in the <a href="/dashboard">dashboard's app builder</a>, or sign in to get started.</p>
-  <p><a href="/dashboard">→ Sign in to your dashboard</a></p>
+  <main>
+    <div class="logo">
+      <svg viewBox="0 0 100 60" width="36" height="22" fill="none" stroke="currentColor" aria-hidden="true">
+        <path d="M 10 50 A 40 40 0 0 1 90 50" stroke-width="4" />
+        <path d="M 18 50 A 32 32 0 0 1 82 50" stroke-width="4" />
+        <path d="M 26 50 A 24 24 0 0 1 74 50" stroke-width="4" />
+        <path d="M 34 50 A 16 16 0 0 1 66 50" stroke-width="4" />
+        <path d="M 42 50 A 8 8 0 0 1 58 50" stroke-width="4" />
+      </svg>
+      <span class="wordmark">rainbow</span>
+    </div>
+
+    <div class="eyebrow">Your domain</div>
+    <h1>This is the front door to <em>your</em> Rainbow.</h1>
+    <p class="lede">
+      Anyone visiting this address sees this page. Build your own home in the
+      app builder &mdash; a profile, a portfolio, a guestbook, anything &mdash;
+      and set it as default to take over this view.
+    </p>
+    <div class="actions">
+      <a href="/dashboard" class="btn-primary">Sign in to your dashboard</a>
+      <a href="/dashboard/builder" class="btn-secondary">Open the app builder &rarr;</a>
+    </div>
+
+    <div class="footnote">
+      Rainbow is a self-hosted digital life platform. Email, photos, files,
+      docs, and AI &mdash; all running on your hardware, none of it on
+      anyone else's cloud.
+    </div>
+  </main>
 </body>
 </html>`);
     });

@@ -8,6 +8,7 @@
  */
 
 import type { ToolInfo } from "../mcp/server.js";
+import type { AppFile } from "./files.js";
 
 export interface PromptContext {
     /** The slug the generated app will be served at: /apps/<slug>/ */
@@ -16,6 +17,13 @@ export interface PromptContext {
     availableTools: ToolInfo[];
     /** Full URL of the Rainbow web tier (e.g. https://test.rainbow.rocks). */
     webHost: string;
+}
+
+export interface EditPromptContext extends PromptContext {
+    /** All current files in the app (HTML/CSS/JS only — binaries skipped). */
+    currentFiles: AppFile[];
+    /** Original creation prompt, for continuity. May be null for older apps. */
+    originalPrompt: string | null;
 }
 
 /**
@@ -133,4 +141,68 @@ ${ctx.availableTools.map(formatToolBlock).join("\n\n")}
 - No tracking, no telemetry, no external requests beyond the user's own Rainbow.
 
 Now generate the app the user requests.`;
+}
+
+/**
+ * Edit-mode prompt: same contract as buildSystemPrompt, but Claude
+ * sees the app's current source and is asked to revise it. Files
+ * Claude omits stay on disk untouched (so the user describing "fix
+ * the scroll bug in index.html" doesn't accidentally drop the
+ * accompanying CSS file).
+ */
+export function buildEditSystemPrompt(ctx: EditPromptContext): string {
+    const files = ctx.currentFiles
+        .map((f) => `\`\`\`file:${f.path}\n${f.content}\n\`\`\``)
+        .join("\n\n");
+    const original = ctx.originalPrompt
+        ? `## ORIGINAL APP DESCRIPTION\n\nThe user's original request when this app was created:\n\n${ctx.originalPrompt}\n\n`
+        : "";
+    return `You are revising an existing single-page app on Rainbow, a self-hosted
+personal-data platform. The app is served at https://${ctx.webHost}/apps/${ctx.slug}/.
+
+## OUTPUT FORMAT — STRICT
+
+Reply with one or more files in this exact format:
+
+\`\`\`file:<relative-path>
+<file contents>
+\`\`\`
+
+Only emit files you are CHANGING (or creating). Files you don't mention
+stay on disk unchanged. Output the FULL revised contents of any file you
+emit — partial diffs aren't supported.
+
+DO NOT include any prose, explanation, or commentary outside the code blocks.
+
+## STACK CONSTRAINTS
+
+- Pure static files: HTML, CSS, vanilla JavaScript. No build step, no npm.
+- ES modules supported (\`<script type="module">\`).
+- No external CDNs — keep the app fully offline-capable. Inline any small libs.
+- Keep total size under 200KB.
+
+## REACHING RAINBOW SERVICES
+
+The user is already authenticated (their cookie is set). Use \`fetch()\` with
+\`credentials: 'include'\`.
+
+**1. MCP gateway at /mcp** — call tools to read/manipulate user data.
+
+   Tools available on this Rainbow:
+
+${ctx.availableTools.map(formatToolBlock).join("\n\n")}
+
+**2. Per-app key/value persistence at /api/apps/${ctx.slug}/data**
+
+   Same as creation: GET/PUT/DELETE /api/apps/${ctx.slug}/data/<key>.
+
+**3. Service catalog at /api/services**.
+
+${original}## CURRENT FILES
+
+These are all the files currently in the app. Revise as needed:
+
+${files}
+
+Now apply the user's requested change. Return only the file(s) you're modifying.`;
 }

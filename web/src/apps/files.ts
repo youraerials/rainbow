@@ -8,7 +8,7 @@
  */
 
 import path from "node:path";
-import { mkdir, writeFile, rm, access } from "node:fs/promises";
+import { mkdir, writeFile, rm, access, readFile, readdir, stat } from "node:fs/promises";
 
 const APPS_DIR = process.env.RAINBOW_APPS_DIR ?? "/var/lib/rainbow/apps";
 
@@ -63,4 +63,45 @@ export async function writeAppFiles(slug: string, files: AppFile[]): Promise<voi
 export async function removeAppFiles(slug: string): Promise<void> {
     if (!isValidSlug(slug)) return;
     await rm(appDir(slug), { recursive: true, force: true });
+}
+
+/**
+ * Read every file in an app's directory, returning their relative paths
+ * + UTF-8 contents. Used by the edit flow so Claude sees the current
+ * source before generating a revision. Skips binary-looking files
+ * (images, etc.) and anything over 256KB to keep the prompt bounded.
+ */
+const MAX_FILE_BYTES = 256 * 1024;
+const SKIP_EXT = new Set([
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".svg",
+    ".woff", ".woff2", ".ttf", ".otf", ".eot",
+    ".mp3", ".mp4", ".webm", ".mov", ".pdf", ".zip",
+]);
+
+export async function readAppFiles(slug: string): Promise<AppFile[]> {
+    if (!isValidSlug(slug)) throw new Error(`invalid slug: ${slug}`);
+    const root = appDir(slug);
+    const out: AppFile[] = [];
+    async function walk(dir: string): Promise<void> {
+        const entries = await readdir(dir, { withFileTypes: true });
+        for (const e of entries) {
+            const full = path.join(dir, e.name);
+            if (e.isDirectory()) {
+                await walk(full);
+                continue;
+            }
+            if (!e.isFile()) continue;
+            const ext = path.extname(e.name).toLowerCase();
+            if (SKIP_EXT.has(ext)) continue;
+            const st = await stat(full);
+            if (st.size > MAX_FILE_BYTES) continue;
+            const content = await readFile(full, "utf8");
+            out.push({
+                path: path.relative(root, full).replaceAll(path.sep, "/"),
+                content,
+            });
+        }
+    }
+    await walk(root);
+    return out.sort((a, b) => a.path.localeCompare(b.path));
 }
