@@ -39,7 +39,7 @@ const POLL_INTERVAL_MS = 30 * 60 * 1000;
 
 export function UpdateBanner() {
   const [info, setInfo] = useState<UpdateInfo | null>(null);
-  const [phase, setPhase] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [phase, setPhase] = useState<"idle" | "running" | "verifying" | "done" | "error">("idle");
   const [logLines, setLogLines] = useState<string[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -82,6 +82,16 @@ export function UpdateBanner() {
     let buf = "";
     let sawDone = false;
     let sawError = false;
+    // Telltale that upgrade.sh is far enough along that any subsequent
+    // connection drop is the orchestrator killing rainbow-web (and
+    // taking this proxied SSE down with it) — at which point we should
+    // verify the new version is live, not surface an error.
+    let sawRestartStep = false;
+    const RESTART_LOG_HINT = /Recreating rainbow-web|orchestrator.sh restart-container/i;
+    const recordLog = (line: string) => {
+      if (RESTART_LOG_HINT.test(line)) sawRestartStep = true;
+      setLogLines((prev) => [...prev.slice(-80), line]);
+    };
 
     while (true) {
       const { done, value } = await reader.read();
@@ -97,10 +107,10 @@ export function UpdateBanner() {
         if (eventName === "log") {
           try {
             const data = JSON.parse(dataRaw) as { stream?: string; line?: string };
-            if (data.line) setLogLines((prev) => [...prev.slice(-80), data.line!]);
+            if (data.line) recordLog(data.line);
           } catch {
             // not JSON — show raw
-            setLogLines((prev) => [...prev.slice(-80), dataRaw]);
+            recordLog(dataRaw);
           }
         } else if (eventName === "done") {
           sawDone = true;
@@ -117,17 +127,64 @@ export function UpdateBanner() {
       }
     }
 
-    if (sawError || !sawDone) {
-      setPhase("error");
-      if (!errorMsg) setErrorMsg("Upgrade did not complete cleanly. Check the install log.");
+    // Happy path: the daemon emitted `event: done` with code 0. Done.
+    if (sawDone && !sawError) {
+      setPhase("done");
+      await refresh();
+      setTimeout(() => window.location.reload(), 1500);
       return;
     }
 
-    setPhase("done");
-    // Refresh version info so the banner clears, then reload after a
-    // beat so the dashboard picks up the new build's bundle.
-    await refresh();
-    setTimeout(() => window.location.reload(), 1500);
+    // Daemon emitted an explicit error, OR we saw a non-zero exit. Bail.
+    if (sawError) {
+      setPhase("error");
+      if (!errorMsg)
+        setErrorMsg("Upgrade did not complete cleanly. Check the install log.");
+      return;
+    }
+
+    // Stream ended without `done` AND we got past the recreate step:
+    // the proxy connection died because rainbow-web restarted. Poll
+    // /api/updates/check until installedVersion catches up, OR give up
+    // after ~60s.
+    if (sawRestartStep) {
+      setPhase("verifying");
+      const target = info?.rainbow.latestVersion ?? "";
+      const started = Date.now();
+      while (Date.now() - started < 60_000) {
+        await new Promise((r) => setTimeout(r, 2500));
+        try {
+          const probe = await fetch("/api/updates/check");
+          if (probe.ok) {
+            const data = (await probe.json()) as UpdateInfo;
+            if (
+              data.rainbow.installedVersion === target ||
+              !data.rainbow.hasUpdate
+            ) {
+              setInfo(data);
+              setPhase("done");
+              setTimeout(() => window.location.reload(), 1500);
+              return;
+            }
+          }
+          // 5xx / 503 here is expected during the brief window the new
+          // rainbow-web is still booting. Just keep polling.
+        } catch {
+          // Same — connection refused while web tier restarts. Retry.
+        }
+      }
+      setPhase("error");
+      setErrorMsg(
+        "Upgrade likely succeeded but verification timed out. Reload the dashboard manually to confirm.",
+      );
+      return;
+    }
+
+    // Stream ended without `done` and we never reached the recreate
+    // step — something failed earlier (download, extract, image pull).
+    setPhase("error");
+    if (!errorMsg)
+      setErrorMsg("Upgrade did not complete cleanly. Check the install log.");
   }
 
   async function reloadDaemon() {
@@ -143,19 +200,29 @@ export function UpdateBanner() {
   if (!info) return null;
 
   // ─── Active upgrade: progress UI ───────────────────────────────
-  if (phase === "running" || phase === "done" || phase === "error") {
+  if (
+    phase === "running" ||
+    phase === "verifying" ||
+    phase === "done" ||
+    phase === "error"
+  ) {
     return (
       <div style={styles.banner}>
         <div style={styles.bannerContent}>
           <div>
             <strong>
               {phase === "running" && "Updating Rainbow…"}
+              {phase === "verifying" &&
+                "Web tier restarting — verifying new version…"}
               {phase === "done" && `Updated to ${info.rainbow.latestVersion}.`}
               {phase === "error" && "Update failed."}
             </strong>
             {errorMsg && <div style={styles.errorMsg}>{errorMsg}</div>}
           </div>
           {phase === "done" && <span style={styles.subtle}>Reloading…</span>}
+          {phase === "verifying" && (
+            <span style={styles.subtle}>This usually takes 10–20 seconds.</span>
+          )}
         </div>
         {logLines.length > 0 && (
           <pre style={styles.logBox}>

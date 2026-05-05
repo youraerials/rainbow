@@ -6,6 +6,11 @@ interface KeyStatus {
   suffix: string | null;
 }
 
+interface VersionInfo {
+  rainbow: { installedVersion: string; latestVersion: string; hasUpdate: boolean };
+  container: { installedVersion: string; pinnedVersion: string };
+}
+
 export function SettingsView() {
   const [keyStatus, setKeyStatus] = useState<KeyStatus | null>(null);
   const [keyInput, setKeyInput] = useState("");
@@ -13,6 +18,7 @@ export function SettingsView() {
     null,
   );
   const [saving, setSaving] = useState(false);
+  const [version, setVersion] = useState<VersionInfo | null>(null);
 
   async function refreshKey() {
     const resp = await fetch("/api/admin/anthropic-key");
@@ -21,8 +27,18 @@ export function SettingsView() {
     }
   }
 
+  async function refreshVersion() {
+    try {
+      const resp = await fetch("/api/updates/check");
+      if (resp.ok) setVersion((await resp.json()) as VersionInfo);
+    } catch {
+      // Silently leave version null — section just doesn't render.
+    }
+  }
+
   useEffect(() => {
     void refreshKey();
+    void refreshVersion();
   }, []);
 
   async function handleSaveKey(e: FormEvent) {
@@ -71,6 +87,36 @@ export function SettingsView() {
   return (
     <div>
       <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 24 }}>Settings</h1>
+
+      {version && (
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>About</h2>
+          <div style={styles.versionRow}>
+            <span style={styles.versionLabel}>Rainbow</span>
+            <code style={styles.versionValue}>
+              {version.rainbow.installedVersion || "unknown"}
+            </code>
+            {version.rainbow.hasUpdate && (
+              <span style={styles.versionBadge}>
+                {version.rainbow.latestVersion} available
+              </span>
+            )}
+          </div>
+          <div style={styles.versionRow}>
+            <span style={styles.versionLabel}>Apple Container</span>
+            <code style={styles.versionValue}>
+              {version.container.installedVersion || "unknown"}
+            </code>
+            {version.container.pinnedVersion &&
+              version.container.installedVersion !==
+                version.container.pinnedVersion && (
+                <span style={styles.versionBadge}>
+                  pinned {version.container.pinnedVersion}
+                </span>
+              )}
+          </div>
+        </div>
+      )}
 
       <div style={styles.section}>
         <h2 style={styles.sectionTitle}>Anthropic API Key</h2>
@@ -307,5 +353,34 @@ const styles: Record<string, React.CSSProperties> = {
     background: "rgba(34,197,94,0.1)",
     padding: "2px 8px",
     borderRadius: 4,
+  },
+  versionRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "8px 12px",
+    background: "var(--bg)",
+    borderRadius: "var(--radius)",
+    marginBottom: 6,
+  },
+  versionLabel: {
+    fontSize: 13,
+    color: "var(--text-dim)",
+    minWidth: 140,
+  },
+  versionValue: {
+    fontSize: 13,
+    fontFamily: "var(--font-mono, ui-monospace, SF Mono, Menlo, monospace)",
+    color: "var(--text)",
+  },
+  versionBadge: {
+    fontSize: 11,
+    color: "var(--text)",
+    background: "var(--surface)",
+    border: "1px solid var(--border)",
+    padding: "2px 8px",
+    borderRadius: 4,
+    letterSpacing: "0.04em",
+    marginLeft: "auto",
   },
 };
