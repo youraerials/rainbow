@@ -1,0 +1,45 @@
+/* Rainbow brand pack — Jellyfin.
+   Paste into Jellyfin: Dashboard → General → "Custom CSS code".
+   Applied to every Jellyfin Web client; native apps ignore it. */
+
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..900,0..100,0..1&family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap");
+
+:root {
+    --theme-primary-color: #1a1612;
+    --theme-accent-color: #1a1612;
+}
+
+body {
+    background-color: #f4ecd8 !important;
+    color: #1a1612;
+    font-family: "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+.skinHeader, .mainDrawer, .dialog, .card, .formDialogHeader {
+    background-color: #ece1c7 !important;
+    color: #1a1612;
+    border-color: #b3a888;
+}
+
+.button-submit, .raised.button-submit, .raised-mini.button-submit, .button.button-submit {
+    background-color: #1a1612 !important;
+    color: #f4ecd8 !important;
+    border-radius: 2px;
+}
+
+a, .emby-button-foreground-color {
+    color: #1a1612;
+}
+
+h1, h2, h3, .sectionTitle, .pageTitle {
+    font-family: "Fraunces", "Iowan Old Style", Georgia, serif;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    color: #1a1612;
+}
+
+/* Card hover — Jellyfin's default has a heavy dark overlay; soften
+   it on the light paper background. */
+.cardOverlayContainer {
+    background: rgba(26, 22, 18, 0.45);
+}

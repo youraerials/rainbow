@@ -1,0 +1,25 @@
+/* Rainbow brand pack — shared base.
+   Sets the warm paper/ink palette + display fonts. Per-service CSS
+   files (immich.css, authentik.css, etc.) prepend this block, then
+   add overrides keyed to their app's selectors.
+
+   Palette mirrors dashboard/index.html — keep them in sync. */
+
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..900,0..100,0..1&family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap");
+
+:root {
+    --rb-bg: #f4ecd8;
+    --rb-surface: #ece1c7;
+    --rb-surface-hover: #e3d6b8;
+    --rb-border: #b3a888;
+    --rb-text: #1a1612;
+    --rb-text-dim: #514738;
+    --rb-accent: #1a1612;
+    --rb-accent-hover: #514738;
+    --rb-green: #4f7a4d;
+    --rb-red: #a64242;
+    --rb-yellow: #b3892e;
+    --rb-radius: 2px;
+    --rb-font-display: "Fraunces", "Iowan Old Style", "Hoefler Text", Georgia, serif;
+    --rb-font-body: "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}

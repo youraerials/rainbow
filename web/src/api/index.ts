@@ -12,6 +12,7 @@ import { appsRouter } from "./apps.js";
 import { servicesControlRouter } from "./services-control.js";
 import { inboundMailRouter } from "./inbound-mail.js";
 import { smarthostRouter } from "./smarthost.js";
+import { stalwartRouter } from "./stalwart.js";
 import { updatesRouter } from "./updates.js";
 import { listTools, callTool } from "../mcp/server.js";
 
@@ -53,6 +54,12 @@ apiRouter.use("/admin", adminRouter);
 
 // /api/admin/smarthost — outbound SMTP relay configuration
 apiRouter.use("/admin/smarthost", smarthostRouter);
+
+// /api/admin/stalwart — connect a JMAP login so email/calendar/contacts
+// MCP tools can authenticate. User completes Stalwart's web wizard,
+// then enters those creds here; we validate, write Keychain, and
+// restart rainbow-web.
+apiRouter.use("/admin/stalwart", stalwartRouter);
 
 // /api/apps/* — list, get, delete apps + per-app key/value data
 apiRouter.use("/apps", appsRouter);

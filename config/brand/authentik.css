@@ -1,0 +1,57 @@
+/* Rainbow brand pack — Authentik.
+   Paste into Authentik: System → Brands → (default) → "Custom CSS".
+   Or set the `branding_custom_css` field via the API.
+   Authentik renders both flow pages (login) and the admin UI through
+   PatternFly; we override its globals here. */
+
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..900,0..100,0..1&family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap");
+
+:root,
+:host {
+    --ak-accent: #1a1612;
+    --ak-dark-foreground: #1a1612;
+    --ak-dark-background: #f4ecd8;
+    --ak-global-link-color: #1a1612;
+    --ak-global--Color--100: #1a1612;
+    --ak-global--BackgroundColor--100: #f4ecd8;
+    --pf-global--BackgroundColor--100: #f4ecd8;
+    --pf-global--BackgroundColor--200: #ece1c7;
+    --pf-global--Color--100: #1a1612;
+    --pf-global--Color--200: #514738;
+    --pf-global--BorderColor--100: #b3a888;
+    --pf-global--primary-color--100: #1a1612;
+    --pf-global--link--Color: #1a1612;
+    --pf-global--link--Color--hover: #514738;
+    --pf-global--FontFamily--sans-serif: "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --pf-global--FontFamily--heading--sans-serif: "Fraunces", "Iowan Old Style", Georgia, serif;
+    --pf-global--BorderRadius--sm: 2px;
+    --pf-global--BorderRadius--lg: 2px;
+}
+
+body, .pf-c-page, .pf-c-login {
+    background: #f4ecd8 !important;
+    color: #1a1612;
+    font-family: "Bricolage Grotesque", -apple-system, system-ui, sans-serif;
+}
+
+.pf-c-login__main, .pf-c-card {
+    background: #ece1c7 !important;
+    border: 1px solid #b3a888;
+    border-radius: 2px;
+    box-shadow: none;
+}
+
+.pf-c-button.pf-m-primary {
+    background: #1a1612 !important;
+    color: #f4ecd8 !important;
+    border-radius: 2px;
+}
+.pf-c-button.pf-m-primary:hover {
+    background: #514738 !important;
+}
+
+h1, h2, h3, .pf-c-title {
+    font-family: "Fraunces", "Iowan Old Style", Georgia, serif;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+}

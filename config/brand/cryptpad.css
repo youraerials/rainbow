@@ -1,0 +1,42 @@
+/* Rainbow brand pack — CryptPad.
+   Mount this file as `customize/customize.css` inside the CryptPad
+   container — see services/cryptpad/setup.sh. CryptPad's editors are
+   iframes (sandbox.domain), so the loader, drive, and document chrome
+   inherit this; document content (CodeMirror, OnlyOffice surface)
+   stays untouched. */
+
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..900,0..100,0..1&family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap");
+
+:root {
+    --cp-accent: #1a1612;
+    --cp-accent-color: #1a1612;
+    --cp-cryptpad-color: #1a1612;
+    --cryptpad-color: #1a1612;
+}
+
+body, .cp-loading, #cp-loading, .cp-app, .cp-toolbar-container {
+    background: #f4ecd8 !important;
+    color: #1a1612;
+    font-family: "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+button.btn-primary, .cp-bar-link, .cp-corner-button {
+    background: #1a1612 !important;
+    color: #f4ecd8 !important;
+    border-radius: 2px;
+    border: none;
+}
+
+a {
+    color: #1a1612;
+}
+
+h1, h2, h3 {
+    font-family: "Fraunces", "Iowan Old Style", Georgia, serif;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+}
+
+#cp-loading-spinner-container {
+    background: #f4ecd8;
+}

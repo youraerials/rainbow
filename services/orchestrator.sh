@@ -95,6 +95,29 @@ ensure_volume() {
     fi
 }
 
+# Capture the Keychain entries that get baked into rainbow-web's env
+# at run-time. Used by start_minimum to detect "did the post-start
+# hooks just provision new API keys?" — if the snapshot before
+# start_web differs from the snapshot after the hooks, we recreate
+# the web container so the new creds take effect (Apple Container
+# freezes env at run-time; a restart alone won't pick them up).
+snapshot_web_creds() {
+    local entries=(
+        rainbow-immich-api-key
+        rainbow-jellyfin-api-key
+        rainbow-seafile-api-token
+        rainbow-stalwart-jmap-user
+        rainbow-stalwart-jmap-password
+        rainbow-oauth-web-client-id
+        rainbow-oauth-web-client-secret
+    )
+    local s
+    for s in "${entries[@]}"; do
+        printf '%s=%s\n' "$s" \
+            "$(security find-generic-password -s "$s" -w 2>/dev/null || echo '')"
+    done
+}
+
 # Wait until a container reports an IP (bounded poll).
 wait_for_ip() {
     local name="$1"
@@ -399,20 +422,28 @@ start_cryptpad() {
     ensure_volume rainbow-cryptpad-data
     ensure_volume rainbow-cryptpad-datastore
     ensure_volume rainbow-cryptpad-config
+    ensure_volume rainbow-cryptpad-customize
 
-    # Initialize the config volume with the image's example files
-    # (config.example.js + sso.example.js — the image entrypoint
-    # `cp`s from these) plus our rendered config.js. Done as an init
-    # container instead of a single-file bind mount because Apple
-    # Container 0.11's file bind mounts return EPERM mid-run; a
-    # named volume populated up-front is reliable.
+    # Initialize two volumes from the image:
+    #   - config: image's config defaults + our rendered config.js
+    #   - customize: image's customize.dist defaults + our brand CSS
+    # Done as an init container instead of file bind mounts because
+    # Apple Container 0.11 file bind mounts return EPERM mid-run.
     container delete --force rainbow-cryptpad-init >/dev/null 2>&1 || true
     container run --rm --name rainbow-cryptpad-init \
         --entrypoint /bin/sh \
-        --mount "type=volume,source=rainbow-cryptpad-config,target=/dst" \
+        --mount "type=volume,source=rainbow-cryptpad-config,target=/dst-config" \
+        --mount "type=volume,source=rainbow-cryptpad-customize,target=/dst-customize" \
         --volume "$INFRA_DIR/cryptpad/customize:/src:ro" \
+        --volume "$RAINBOW_ROOT/config/brand:/brand:ro" \
         docker.io/cryptpad/cryptpad:latest \
-        -c 'cp /cryptpad/config/* /dst/ 2>/dev/null; cp /src/config.js /dst/config.js && chmod 644 /dst/config.js' \
+        -c 'cp /cryptpad/config/* /dst-config/ 2>/dev/null;
+            cp /src/config.js /dst-config/config.js && chmod 644 /dst-config/config.js;
+            cp -r /cryptpad/customize.dist/. /dst-customize/ 2>/dev/null;
+            if [ -f /brand/cryptpad.css ]; then
+                cp /brand/cryptpad.css /dst-customize/customize.css;
+                chmod 644 /dst-customize/customize.css;
+            fi' \
         >/dev/null
 
     # CryptPad's entrypoint requires CPAD_CONF env to point at a config file;
@@ -438,6 +469,7 @@ start_cryptpad() {
         --env "CPAD_MAIN_DOMAIN=https://${host_prefix}docs.${zone}" \
         --env "CPAD_SANDBOX_DOMAIN=https://${host_prefix}docs-sandbox.${zone}" \
         --mount "type=volume,source=rainbow-cryptpad-config,target=/cryptpad/config" \
+        --mount "type=volume,source=rainbow-cryptpad-customize,target=/cryptpad/customize" \
         --mount "type=volume,source=rainbow-cryptpad-blob,target=/cryptpad/blob" \
         --mount "type=volume,source=rainbow-cryptpad-block,target=/cryptpad/block" \
         --mount "type=volume,source=rainbow-cryptpad-data,target=/cryptpad/data" \
@@ -653,6 +685,14 @@ start_minimum() {
     webmail_ip=$(wait_for_ip rainbow-webmail) \
         || { orch_err "webmail has no IP"; return 1; }
 
+    # Snapshot the Keychain entries that affect rainbow-web's MCP tools
+    # BEFORE we bake env vars into the web container. We compare against
+    # the same snapshot after the post-start hooks run; if anything new
+    # appeared (api keys minted by services/{immich,jellyfin,seafile}/setup.sh),
+    # we recreate rainbow-web so the freshly-minted creds take effect.
+    local pre_web_creds
+    pre_web_creds=$(snapshot_web_creds)
+
     start_web
     local web_ip
     web_ip=$(wait_for_ip rainbow-web) \
@@ -686,6 +726,40 @@ start_minimum() {
         orch_warn "jellyfin post-start setup failed (run services/jellyfin/setup.sh manually)"
     bash "$ORCH_DIR/webmail/setup.sh" || \
         orch_warn "webmail post-start setup failed (run services/webmail/setup.sh manually)"
+
+    # If the post-start hooks minted new API keys (first-install case),
+    # rainbow-web's env vars are stale — Apple Container froze them at
+    # run-time. Recreate it (gives a new IP) and recompile Caddy +
+    # cloudflared to point at the new IP.
+    local post_web_creds
+    post_web_creds=$(snapshot_web_creds)
+    if [ "$pre_web_creds" != "$post_web_creds" ]; then
+        orch_info "API keys minted during post-start hooks — refreshing web tier..."
+        start_web
+        web_ip=$(wait_for_ip rainbow-web) \
+            || { orch_err "web didn't come back after refresh"; return 1; }
+        compile_caddyfile \
+            "authentik-server=$authentik_ip" \
+            "immich-server=$immich_ip" \
+            "cryptpad=$cryptpad_ip" \
+            "seafile=$seafile_ip" \
+            "stalwart=$stalwart_ip" \
+            "jellyfin=$jellyfin_ip" \
+            "webmail=$webmail_ip" \
+            "web=$web_ip"
+        start_caddy
+        caddy_ip=$(wait_for_ip rainbow-caddy) \
+            || { orch_err "caddy didn't come back after refresh"; return 1; }
+        start_cloudflared "$caddy_ip" || return 1
+        orch_ok "Web tier refreshed."
+    fi
+
+    # Brand CSS: pushes config/brand/<service>.css into Immich,
+    # Authentik, and Jellyfin via their admin APIs. Skips silently if a
+    # service's creds aren't yet provisioned (first-run timing). Re-run
+    # any time after design changes via `services/brand/apply.sh`.
+    bash "$ORCH_DIR/brand/apply.sh" --quiet || \
+        orch_warn "brand CSS apply failed (re-run services/brand/apply.sh manually)"
 
     local prefix zone host_prefix web_host
     prefix=$(yq eval '.domain.prefix' "$CONFIG_FILE")

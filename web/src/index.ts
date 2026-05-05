@@ -176,9 +176,10 @@ if (SETUP_MODE) {
     // Final fallback: visitor hits / (or anything not claimed above)
     // and no home app is set. Show a simple welcome page that points
     // at /dashboard. This is a string literal — no static file to ship.
-    // Express 5 / path-to-regexp v8 rejects a bare "*" — must be a
-    // named splat parameter.
-    app.get("/*splat", (_req, res) => {
+    // Regex route (vs `/*splat`) because path-to-regexp v8 wildcards
+    // require at least one segment, so `/*splat` skips a request to
+    // bare `/` — exactly the case this fallback exists to handle.
+    app.get(/.*/, (_req, res) => {
         res.status(200).type("html").send(`<!DOCTYPE html>
 <html lang="en">
 <head>

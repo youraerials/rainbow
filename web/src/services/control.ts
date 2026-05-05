@@ -25,8 +25,9 @@ export interface ContainerActionResult {
 }
 
 async function call(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PUT",
     path: string,
+    payload?: unknown,
 ): Promise<{ status: number; body: unknown }> {
     if (!isConfigured()) {
         return {
@@ -35,18 +36,23 @@ async function call(
         };
     }
     const url = `${CONTROL_URL}${path}`;
-    const res = await fetch(url, {
-        method,
-        headers: { Authorization: `Bearer ${CONTROL_TOKEN}` },
-    });
-    let body: unknown = null;
+    const headers: Record<string, string> = {
+        Authorization: `Bearer ${CONTROL_TOKEN}`,
+    };
+    let body: string | undefined;
+    if (payload !== undefined) {
+        headers["Content-Type"] = "application/json";
+        body = JSON.stringify(payload);
+    }
+    const res = await fetch(url, { method, headers, body });
+    let parsed: unknown = null;
     const text = await res.text();
     try {
-        body = text ? JSON.parse(text) : null;
+        parsed = text ? JSON.parse(text) : null;
     } catch {
-        body = { raw: text };
+        parsed = { raw: text };
     }
-    return { status: res.status, body };
+    return { status: res.status, body: parsed };
 }
 
 export async function restart(name: string): Promise<ContainerActionResult> {
@@ -69,6 +75,18 @@ export async function logs(
     lines: number,
 ): Promise<{ status: number; body: unknown }> {
     return call("GET", `/logs/${encodeURIComponent(name)}?lines=${lines}`);
+}
+
+/**
+ * PUT /keychain/<service> — set a Keychain entry on the host. The
+ * daemon validates `service` against `^rainbow-[a-z0-9-]+$` and writes
+ * `{value}` via `security add-generic-password ... -U`.
+ */
+export async function keychainPut(
+    service: string,
+    value: string,
+): Promise<{ status: number; body: unknown }> {
+    return call("PUT", `/keychain/${encodeURIComponent(service)}`, { value });
 }
 
 /** GET /system/info — versions of Rainbow + Apple Container. */

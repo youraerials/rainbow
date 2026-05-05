@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ServiceCard } from "../components/ServiceCard";
 import { HealthIndicator } from "../components/HealthIndicator";
+import { MailConnectBanner } from "../components/MailConnectBanner";
 
 interface Service {
   name: string;
@@ -103,6 +104,8 @@ export function HomeView() {
           <span style={styles.domainValue}>{domain}</span>
         </div>
       )}
+
+      <MailConnectBanner />
 
       <h2 style={styles.sectionTitle}>Services</h2>
       <div style={styles.grid}>
