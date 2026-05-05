@@ -116,6 +116,15 @@ sed -i.bak "s|__RAINBOW_WEB_IMAGE__|$RAINBOW_WEB_IMAGE|g" "$PHASE_B_PATH"
 rm -f "$PHASE_B_PATH.bak"
 chmod +x "$PHASE_B_PATH"
 echo "Pinned rainbow-web image to: $RAINBOW_WEB_IMAGE"
+
+# upgrade.sh — the in-app Update banner triggers the control daemon's
+# `upgrade` task, which is hardcoded to `installer/scripts/upgrade.sh`.
+# Ship it explicitly: the working-tree script in installer/scripts/ is
+# excluded by the wholesale rsync above (we deliberately don't ship
+# the whole installer/ dir).
+cp "$SCRIPT_DIR/scripts/upgrade.sh" \
+   "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/upgrade.sh"
+chmod +x "$PAYLOAD_DIR/Applications/Rainbow/installer/scripts/upgrade.sh"
 cp "$SCRIPT_DIR/resources/rocks.rainbow.setup.plist" \
    "$PAYLOAD_DIR/Applications/Rainbow/installer/resources/rocks.rainbow.setup.plist"
 
