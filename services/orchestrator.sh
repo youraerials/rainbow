@@ -422,28 +422,28 @@ start_cryptpad() {
     ensure_volume rainbow-cryptpad-data
     ensure_volume rainbow-cryptpad-datastore
     ensure_volume rainbow-cryptpad-config
-    ensure_volume rainbow-cryptpad-customize
 
-    # Initialize two volumes from the image:
-    #   - config: image's config defaults + our rendered config.js
-    #   - customize: image's customize.dist defaults + our brand CSS
-    # Done as an init container instead of file bind mounts because
-    # Apple Container 0.11 file bind mounts return EPERM mid-run.
+    # Initialize the config volume with the image's example files
+    # (config.example.js + sso.example.js — the image entrypoint
+    # `cp`s from these) plus our rendered config.js. Done as an init
+    # container instead of a single-file bind mount because Apple
+    # Container 0.11's file bind mounts return EPERM mid-run; a
+    # named volume populated up-front is reliable.
+    #
+    # Brand-CSS injection via a customize volume was attempted here in
+    # 0.1.30 — `cp -r /cryptpad/customize.dist/.` to seed the override
+    # volume with the image's defaults crashed Apple Container's
+    # apiserver with NIOHTTP2 StreamClosed, presumably because
+    # virtiofs choked on the file count. Reverted; CryptPad ships
+    # un-themed for now. See config/brand/cryptpad.css for the CSS we
+    # WANT to inject — needs a different mounting strategy.
     container delete --force rainbow-cryptpad-init >/dev/null 2>&1 || true
     container run --rm --name rainbow-cryptpad-init \
         --entrypoint /bin/sh \
-        --mount "type=volume,source=rainbow-cryptpad-config,target=/dst-config" \
-        --mount "type=volume,source=rainbow-cryptpad-customize,target=/dst-customize" \
+        --mount "type=volume,source=rainbow-cryptpad-config,target=/dst" \
         --volume "$INFRA_DIR/cryptpad/customize:/src:ro" \
-        --volume "$RAINBOW_ROOT/config/brand:/brand:ro" \
         docker.io/cryptpad/cryptpad:latest \
-        -c 'cp /cryptpad/config/* /dst-config/ 2>/dev/null;
-            cp /src/config.js /dst-config/config.js && chmod 644 /dst-config/config.js;
-            cp -r /cryptpad/customize.dist/. /dst-customize/ 2>/dev/null;
-            if [ -f /brand/cryptpad.css ]; then
-                cp /brand/cryptpad.css /dst-customize/customize.css;
-                chmod 644 /dst-customize/customize.css;
-            fi' \
+        -c 'cp /cryptpad/config/* /dst/ 2>/dev/null; cp /src/config.js /dst/config.js && chmod 644 /dst/config.js' \
         >/dev/null
 
     # CryptPad's entrypoint requires CPAD_CONF env to point at a config file;
@@ -469,7 +469,6 @@ start_cryptpad() {
         --env "CPAD_MAIN_DOMAIN=https://${host_prefix}docs.${zone}" \
         --env "CPAD_SANDBOX_DOMAIN=https://${host_prefix}docs-sandbox.${zone}" \
         --mount "type=volume,source=rainbow-cryptpad-config,target=/cryptpad/config" \
-        --mount "type=volume,source=rainbow-cryptpad-customize,target=/cryptpad/customize" \
         --mount "type=volume,source=rainbow-cryptpad-blob,target=/cryptpad/blob" \
         --mount "type=volume,source=rainbow-cryptpad-block,target=/cryptpad/block" \
         --mount "type=volume,source=rainbow-cryptpad-data,target=/cryptpad/data" \

@@ -17,7 +17,7 @@ buttons.
 | `immich.css` | Pushed to Immich via `system-config.theme.customCss` by `services/brand/apply.sh` |
 | `authentik.css` | Pushed to Authentik via `brands.<default>.branding_custom_css` by `services/brand/apply.sh` |
 | `jellyfin.css` | Pushed to Jellyfin via `Branding/Configuration.CustomCss` by `services/brand/apply.sh` |
-| `cryptpad.css` | Mounted as `/cryptpad/customize/customize.css` via the orchestrator's init container |
+| `cryptpad.css` | NOT auto-applied — first attempt crashed Apple Container's apiserver (see Caveats). Sits unused for now. |
 
 ## Auto-apply
 
@@ -48,10 +48,16 @@ deleting the `rainbow-cryptpad-customize` volume) to re-init.
 - **Dark mode** — these files target each service's default light
   theme. If a user picks the app's own dark mode the override falls
   back to the app's defaults (we don't fight built-in theme switching).
-- **CryptPad** — the CSS lands at the right path but only takes
-  effect on URLs that load `customize/customize.css`. Some screens
-  (the editors) live in sandboxed iframes that may need additional
-  wiring; verify in situ and iterate.
+- **CryptPad — currently unwired.** The plan was to seed a customize
+  volume from the image's `customize.dist/` (translations, images,
+  ckeditor, hundreds of files) and drop our `customize.css` on top.
+  Apple Container's apiserver crashed during the `cp -r` with a
+  NIOHTTP2 StreamClosed — virtiofs throughput on that many small
+  files exceeded what the apiserver tolerates. Reverted in 0.1.31.
+  The CSS file is preserved here for a future re-attempt with a
+  different mounting strategy (e.g. baking it into a derived image,
+  or a single-file bind mount once Apple Container's file mounts
+  stabilize).
 
 ## Adding a service
 
