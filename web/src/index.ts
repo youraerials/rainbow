@@ -176,7 +176,9 @@ if (SETUP_MODE) {
     // Final fallback: visitor hits / (or anything not claimed above)
     // and no home app is set. Show a simple welcome page that points
     // at /dashboard. This is a string literal — no static file to ship.
-    app.get("*", (_req, res) => {
+    // Express 5 / path-to-regexp v8 rejects a bare "*" — must be a
+    // named splat parameter.
+    app.get("/*splat", (_req, res) => {
         res.status(200).type("html").send(`<!DOCTYPE html>
 <html lang="en">
 <head>
